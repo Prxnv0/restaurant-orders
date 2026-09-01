@@ -43,3 +43,20 @@ th { background: #f0f0f1; font-weight: 600; }
 .card { background: white; padding: 16px; border-radius: 6px; border: 1px solid #e5e5e5; margin-bottom: 16px; }
 .error { color: #b91c1c; background: #fee2e2; padding: 8px 12px; border-radius: 4px; }
 .muted { color: #6b7280; }
+
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; margin-bottom: 4px; font-weight: 500; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; }
+
+.login-container { display: flex; justify-content: center; padding: 40px 20px; }
+.login-card { max-width: 360px; width: 100%; }
+.login-card h1 { margin: 0 0 4px; font-size: 20px; }
+.login-card form button { width: 100%; padding: 8px; }
+.login-card code { background: #f0f0f1; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+
+.app-nav { display: flex; justify-content: space-between; align-items: center; }
+.nav-links { display: flex; gap: 16px; }
+.nav-links a { color: white; text-decoration: none; font-weight: 400; font-size: 14px; }
+.nav-links a:hover { text-decoration: underline; }
+.user-info { font-size: 13px; opacity: 0.9; }
+.user-info button { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.4); padding: 4px 10px; }

@@ -1,5 +1,5 @@
-// Express app entry. The skeleton is intentionally minimal in milestone 1;
-// routes are added in subsequent milestones.
+// Express app entry. Routes are mounted here.
+// Milestone 2: auth middleware and auth routes are now active.
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -24,8 +24,10 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-// TODO: mount route modules here in subsequent milestones
-// app.use('/api/auth', require('./routes/auth'));
+// ── Mount routes ────────────────────────────────────────────────────
+app.use('/api/auth', require('./routes/auth'));
+
+// TODO: mount remaining routes in subsequent milestones
 // app.use('/api/menu', require('./routes/menu'));
 // app.use('/api/orders', require('./routes/orders'));
 // app.use('/api/alerts', require('./routes/alerts'));
@@ -33,12 +35,15 @@ app.get('/api/health', (_req, res) => {
 // app.use('/api/export', require('./routes/export'));
 
 // Global error handler — catches AppError thrown by route handlers
-// (added in milestone 2 alongside auth).
+const AppError = require('./utils/errors');
 app.use((err, _req, res, _next) => {
+  if (err instanceof AppError) {
+    return res.status(err.status).json({ error: err.code, message: err.message });
+  }
   console.error('Unhandled error:', err);
-  res.status(err.status || 500).json({
-    error: err.code || 'INTERNAL_ERROR',
-    message: err.message || 'An unexpected error occurred',
+  res.status(500).json({
+    error: 'INTERNAL_ERROR',
+    message: 'An unexpected error occurred',
   });
 });
 
