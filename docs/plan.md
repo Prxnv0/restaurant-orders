@@ -19,7 +19,7 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 **Delivered:**
 - Backend: Express skeleton, Prisma client singleton, `.env.example`
 - Frontend: Vite + React + Router + CSS skeleton
-- Database: Full Prisma schema (9 tables) with all indexes, CHECK constraints, enums
+- Database: Full Prisma schema (9 tables) with all indexes, enums
 - Seed script: 3 demo users (1 manager, 2 waiters), 6 menu items, 7 orders in every status, order lines with price snapshots, a voided line with reason, a collaborator row, history entries, notes, alerts, dismissals
 - Documentation: `docs/schema.md`, `docs/architecture.md`, `docs/plan.md` updated to "Implemented (skeleton)" status; initial 8 planning-phase decisions; planning-phase AI prompts
 
@@ -32,16 +32,20 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 - Frontend: `api.js` (fetch wrapper with credentials), `AuthContext` (login/logout/restore session), `ProtectedRoute` (auth + role guard), `LoginPage`, real router with role-scoped routes
 - Decisions 9–13 (JS-vs-TS, CommonJS-vs-ESM, idempotent seed, `served_at` column, Prisma enums) added
 
-### Milestone 3 — Menu Management + Bulk Update (est. 2 hours) ⏳ NEXT
+### Milestone 3 — Menu Management + Bulk Update (est. 2 hours) ✅ COMPLETE
 **Requirements satisfied:**
 - **Goal 1** (menu authority): server-enforced manager-only for menu CRUD
 - **Goal 7** (partial): single-item CRUD + bulk-update endpoint with per-item success/reject
 
-**Backend scope:**
-- `routes/menu.js`: GET /api/menu (list with `?include=available|all|archived`), GET /api/menu/:id, POST /api/menu (manager), PATCH /api/menu/:id (manager, including `is_archived` toggle), POST /api/menu/bulk-update (manager)
-- Joi validation: `name` required; `price` decimal ≥ 0; `is_available` boolean; `is_archived` boolean
-- Bulk-update response shape: `{ succeeded: [...], rejected: [{ id, reason }] }`. Per-item try/catch so one invalid item does not fail the batch
-- Decisions to record: bulk-update validation strategy (per-item vs upfront)
+**Delivered:**
+- Backend: `routes/menu.js` with 5 endpoints (GET list with `?include=available|all|archived`, GET one, POST, PATCH with archive toggle, POST `/bulk-update`)
+- Backend: `validators/menu.js` with three Joi schemas (`createMenuItem`, `updateMenuItem`, `bulkUpdate`); `validators/index.js` barrel
+- Backend: `tests/menu-validator.test.js` (18 cases covering happy path + every rejection rule); `vitest.config.js`; `tests/setup.js`
+- Frontend: `api.js` menu helpers (`fetchMenu`, `createMenuItem`, `updateMenuItem`, `bulkUpdateMenuItems`); `MenuPage.jsx` with full manager UI (add, edit, archive, multi-select bulk price/availability with per-item result display)
+- Decisions 14 (per-item try/catch for bulk-update) added
+
+**Notes:**
+- Database-touching integration tests for menu routes are deferred to M10 ("Critical Automated Tests"), where the full Supertest + test-database harness is set up. M3 ships validator-level coverage only.
 
 ### Milestone 4 — Orders + Order Lines (est. 2 hours) ⏳ PENDING
 **Requirements satisfied:**
@@ -276,7 +280,7 @@ Documentation is updated **as the work happens**, not from memory at the end:
 |-----------|----------|--------|--------|
 | 1. Foundation + Database | 2h | ~2h | ✅ |
 | 2. Auth + AuthZ | 2h | — | 🔄 → ✅ |
-| 3. Menu + Bulk | 2h | — | ⏳ |
+| 3. Menu + Bulk | 2h | ~1.5h | ✅ |
 | 4. Orders + Lines | 2h | — | ⏳ |
 | 5. Lifecycle + History | 2h | — | ⏳ |
 | 6. Collaborators + Search | 2h | — | ⏳ |
@@ -287,7 +291,7 @@ Documentation is updated **as the work happens**, not from memory at the end:
 | 11. Deploy + Smoke | 0.5h | — | ⏳ |
 | 12. Pre-Submission Check | 0.25h | — | ⏳ |
 | 13. Docs Final | 0.25h | — | ⏳ |
-| **Total** | **~15.5h** | **~4h so far** | 9 milestones remain |
+| **Total** | **~15.5h** | **~5.5h so far** | 8 milestones remain |
 
 ---
 

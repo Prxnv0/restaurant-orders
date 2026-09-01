@@ -60,3 +60,20 @@ export async function logout() {
 export async function fetchMe() {
   return api.get('/api/auth/me');
 }
+
+// Convenience menu helpers
+export async function fetchMenu(include = 'available') {
+  return api.get(`/api/menu?include=${include}`);
+}
+
+export async function createMenuItem(data) {
+  return api.post('/api/menu', data);
+}
+
+export async function updateMenuItem(id, data) {
+  return api.patch(`/api/menu/${id}`, data);
+}
+
+export async function bulkUpdateMenuItems(item_ids, data) {
+  return api.post('/api/menu/bulk-update', { item_ids, ...data });
+}

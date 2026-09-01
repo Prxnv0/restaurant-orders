@@ -99,7 +99,25 @@ Additional decisions will be recorded here as the project develops. Examples tha
 
 - **Chose:** Use Prisma's `enum` declarations for `Role`, `OrderStatus`, `LineStatus`, and `EventType`.
 - **Rejected:** String fields with `@@check` constraints only (no Prisma enums).
-- **Why:** Prisma enums give compile-time guarantees in the Prisma client (`status: OrderStatus.ACCEPTED` instead of `'ACCEPTED'`) and generate a PostgreSQL `enum` type under the hood, which is more efficient than a CHECK constraint and more discoverable in pgAdmin. We still add explicit `@@check(status IN ...)` constraints on each model as a defence-in-depth backstop in case a future migration loosens the enum.
+- **Why:** Prisma enums give compile-time guarantees in the Prisma client (`status: OrderStatus.ACCEPTED` instead of `'ACCEPTED'`) and generate a PostgreSQL `enum` type under the hood, which is more efficient than a CHECK constraint and more discoverable in pgAdmin.
+
+**Updated during M3 (see Decision 15):** the "defence-in-depth `@@check` backstop" mentioned in the original version of this decision was not actually added to the schema. The original M1 schema had raw `@@check(...)` block attributes that Prisma does not support; they were removed in M3 so `prisma generate` could run. The enum + Joi application-layer enforcement remains the only check. This is a correction to the original decision text, not a reversal of the choice — Prisma enums are still the primary mechanism, and application-layer enforcement still backs them.
+
+## Decision 14 — Per-item try/catch for menu bulk-update
+
+- **Chose:** Validate the bulk-update request body once with Joi (id list, at least one of `price` / `is_available`), then loop over the ids and run each `prisma.menuItem.update` inside its own try/catch. The response is `{ succeeded: [...], rejected: [{ id, reason }] }` — never an HTTP error for per-item issues.
+- **Rejected:** Validate every id + change upfront and reject the whole request if any item fails; or run the whole batch as a single Prisma transaction.
+- **Why:** The README explicitly says "a request can list multiple items and what succeeded and what was rejected is reported back" — the contract is per-item outcomes, not all-or-nothing. A single transaction would also be wrong: one bad item would rollback the good ones. The upfront-validation approach would force the client to repeatedly fix the same item while every other item in the batch stays stale. Per-item try/catch is the only shape that satisfies the requirement and also keeps the manager UI's "X succeeded, Y rejected" display honest.
+- **Trade-off accepted:** A bulk request that hits many bad ids performs N+1 queries. This is fine for a restaurant with at most a few hundred menu items, and the route is manager-only so it is not a hot path. Documented as a known limitation rather than a premature optimization.
+
+## Decision 15 — Drop raw `@@check` constraints; rely on Joi + Prisma enums
+
+- **Chose:** Remove the four raw `@@check(...)` block attributes from `prisma/schema.prisma` (price ≥ 0 on `MenuItem`; status in valid set on `Order`; quantity ≥ 1 and status in valid set on `OrderLine`; event_type in valid set on `OrderHistoryEntry`). Application-layer Joi validation on every write is the sole enforcement mechanism. Schema-correctness invariants that were not raw CHECKs (enums, foreign keys, composite primary keys, `onDelete: Cascade`) are unchanged.
+- **Rejected (in M1):** Keep raw `@@check` constraints as a defence-in-depth backstop (the original Decision 13 wording).
+- **Why the change:** Prisma's schema DSL does not actually support the `@@check` block attribute — the M1 schema did not validate. `prisma generate` failed with `P1012: This line is not a valid field or attribute definition`, which would have blocked any deploy (and any test that loaded the Prisma client). Rather than switch to a raw SQL migration to add the constraints, we drop them and accept application-layer enforcement.
+- **What the user sees:** None. The API contract is unchanged: invalid prices, quantities, and statuses are still rejected, just by Joi before they reach the database. The "Where enforced" table in `docs/schema.md` has been updated to reflect this.
+- **Why the trade-off is acceptable:** A take-home with one application server and no other write paths cannot reach the database except through Joi-validated controllers. The defence-in-depth value of a DB CHECK would be in catching direct SQL writes from migrations, ad-hoc psql sessions, or a future second service — none of which exist in this 12-hour build. Adding a raw SQL migration would also create a second source of truth (Prisma schema + raw migration) that has to stay in sync.
+- **Cost of the original choice:** Zero user-facing impact (the invalid attributes never compiled), but it would have been a deploy blocker. Found and fixed during M3 because `prisma generate` is required to run the backend.
 
 ---
 

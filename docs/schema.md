@@ -26,7 +26,7 @@ Stores authenticated accounts. Two roles: MANAGER and WAITER.
 | email | VARCHAR(255) | UNIQUE, NOT NULL |
 | password_hash | VARCHAR(255) | NOT NULL |
 | name | VARCHAR(255) | NOT NULL |
-| role | TEXT | NOT NULL, CHECK (role IN ('MANAGER', 'WAITER')) |
+| role | TEXT | NOT NULL — Prisma `enum Role` (`MANAGER`, `WAITER`) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
 | updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
 
@@ -42,7 +42,7 @@ The restaurant's offerings. Archived items are hidden from the default list but 
 |--------|------|-------------|
 | id | UUID | PK |
 | name | VARCHAR(255) | NOT NULL |
-| price | DECIMAL(10,2) | NOT NULL, CHECK (price >= 0) |
+| price | DECIMAL(10,2) | NOT NULL — enforced by Joi before write (application layer only; see Decision 15) |
 | is_available | BOOLEAN | NOT NULL, DEFAULT TRUE |
 | is_archived | BOOLEAN | NOT NULL, DEFAULT FALSE |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
@@ -60,7 +60,7 @@ The central entity. Tracks status, primary waiter, and archive state.
 |--------|------|-------------|
 | id | UUID | PK |
 | table_number | VARCHAR(50) | NOT NULL |
-| status | TEXT | NOT NULL, CHECK (status IN ('PLACED','ACCEPTED','PREPARING','READY','SERVED','CANCELLED')) |
+| status | TEXT | NOT NULL — Prisma `enum OrderStatus` (PLACED, ACCEPTED, PREPARING, READY, SERVED, CANCELLED) |
 | primary_waiter_id | UUID | NOT NULL, FK → users(id) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
 | updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
@@ -80,10 +80,10 @@ One row per menu item on an order. `unit_price` is a snapshot — it stores the 
 | id | UUID | PK |
 | order_id | UUID | NOT NULL, FK → orders(id) ON DELETE CASCADE |
 | menu_item_id | UUID | NOT NULL, FK → menu_items(id) |
-| quantity | INTEGER | NOT NULL, CHECK (quantity >= 1) |
+| quantity | INTEGER | NOT NULL — enforced by Joi before write (application layer only; see Decision 15) |
 | unit_price | DECIMAL(10,2) | NOT NULL (snapshot, not FK) |
 | special_instructions | TEXT | NULL |
-| status | TEXT | NOT NULL, CHECK (status IN ('ACTIVE', 'VOID')), DEFAULT 'ACTIVE' |
+| status | TEXT | NOT NULL, DEFAULT 'ACTIVE' — Prisma `enum LineStatus` (`ACTIVE`, `VOID`) |
 | void_reason | TEXT | NULL (required when status = 'VOID') |
 | voided_at | TIMESTAMPTZ | NULL |
 | voided_by | UUID | FK → users(id), NULL |
@@ -115,7 +115,7 @@ Append-only audit log. **No UPDATE or DELETE endpoint is exposed for this table.
 |--------|------|-------------|
 | id | UUID | PK |
 | order_id | UUID | NOT NULL, FK → orders(id) ON DELETE CASCADE |
-| event_type | TEXT | NOT NULL, CHECK (event_type IN ('STATUS_CHANGE','LINE_ADDED','LINE_VOIDED','NOTE_ADDED','COLLABORATOR_ADDED','COLLABORATOR_REMOVED')) |
+| event_type | TEXT | NOT NULL — Prisma `enum EventType` (STATUS_CHANGE, LINE_ADDED, LINE_VOIDED, NOTE_ADDED, COLLABORATOR_ADDED, COLLABORATOR_REMOVED) |
 | details | JSONB | NOT NULL |
 | actor_id | UUID | NOT NULL, FK → users(id) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
@@ -197,19 +197,20 @@ Tracks each dismissal cycle independently. An alert can be dismissed multiple ti
 | Constraint | Enforced By |
 |------------|-------------|
 | User email unique | Database (UNIQUE index) |
-| User role in ('MANAGER', 'WAITER') | Database (CHECK) + application validation |
-| Menu item price >= 0 | Database (CHECK) + application validation |
-| Order status in valid set | Database (CHECK) + application state machine |
-| Order line quantity >= 1 | Database (CHECK) |
-| Order line status in ('ACTIVE', 'VOID') | Database (CHECK) |
-| Void reason required when VOID | Application (no DB mechanism for conditional NOT NULL) |
+| User role in ('MANAGER', 'WAITER') | Prisma `enum Role` (PostgreSQL enum type at DB level) |
+| Menu item price >= 0 | Application (Joi schema — validated before every write) |
+| Order status in valid set | Prisma `enum OrderStatus` (PostgreSQL enum type at DB level) |
+| Order line quantity >= 1 | Application (Joi schema — validated before every write) |
+| Order line status in ('ACTIVE', 'VOID') | Prisma `enum LineStatus` (PostgreSQL enum type at DB level) |
+| Order history event_type in valid set | Prisma `enum EventType` (PostgreSQL enum type at DB level) |
+| Void reason required when VOID | Application (Joi schema — required when status = VOID) |
 | Cannot cancel once Preparing | Application state machine |
 | Cannot skip order statuses | Application state machine |
 | History immutability | Application (no UPDATE/DELETE routes defined) |
 | No delete on notes | Application (no DELETE route defined) |
 | Collaborator cannot double-add | Database (composite PK prevents duplicates) |
 
-The database enforces data-type and range constraints. The application enforces business rules (state machine, authorization, conditional fields). The reason for this split: database constraints catch data corruption at the storage layer; application constraints encode business logic that requires context (e.g., "can this user cancel this order?").
+**Why this split?** PostgreSQL enums (generated from Prisma enums) enforce the fixed sets (`MANAGER`/`WAITER`, `PLACED`/`ACCEPTED`/…) at the storage layer. The application enforces all business logic and cross-field rules via Joi schemas and the state machine module. This split keeps the database schema simple (no raw SQL CHECK constraints needed) while keeping business rules testable and auditable in one place. See Decision 15 for the rationale for dropping the raw CHECK constraints.
 
 ---
 

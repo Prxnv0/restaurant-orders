@@ -41,6 +41,8 @@ model User {
   linesVoided             OrderLine[]             @relation("LineVoider")
   // Collaborator entries added by this user
   collaborationsAdded     OrderCollaborator[]     @relation("CollaboratorAdder")
+  // Orders this user is a collaborator waiter on
+  collaborationsAsWaiter  OrderCollaborator[]     @relation("CollaboratorWaiter")
   // Notes created by this user
   notes                   OrderNote[]             @relation("NoteCreator")
   // Alert dismissals performed by this user
@@ -66,8 +68,9 @@ model MenuItem {
   // Lines referencing this menu item
   orderLines  OrderLine[]
 
-  // Ensure price is non-negative via Prisma-level check
-  @@check(price >= 0, name: "menu_item_price_non_negative")
+  // Non-negativity of price is enforced by Joi on the backend.
+  // Adding a DB-level check requires a raw SQL migration; omitted here
+  // in favour of application-layer enforcement and simplicity.
   @@map("menu_items")
 }
 
@@ -106,8 +109,7 @@ model Order {
   // Alert for this order (0 or 1)
   alert            Alert?
 
-  // Enforce valid statuses at the DB level
-  @@check(status IN ('PLACED','ACCEPTED','PREPARING','READY','SERVED','CANCELLED'), name: "order_status_valid")
+  // Valid statuses are enforced by the Prisma enum OrderStatus.
   // Indexes for common queries
   @@index([primaryWaiterId, createdAt])
   @@index([status])
@@ -144,10 +146,8 @@ model OrderLine {
   createdBy          User       @relation("LineCreator", fields: [createdById], references: [id])
   voidedBy           User?      @relation("LineVoider", fields: [voidedById], references: [id])
 
-  // quantity must be positive
-  @@check(quantity >= 1, name: "order_line_quantity_positive")
-  // valid statuses
-  @@check(status IN ('ACTIVE','VOID'), name: "order_line_status_valid")
+  // quantity ≥ 1 and valid statuses are enforced by Joi on the backend
+  // and the Prisma enum LineStatus. No raw DB check constraints.
   @@index([orderId])
   @@index([orderId, status])
   @@map("order_lines")
@@ -163,7 +163,7 @@ model OrderCollaborator {
   addedById String   @map("added_by")
 
   order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  waiter  User  @relation(fields: [waiterId], references: [id])
+  waiter  User  @relation("CollaboratorWaiter", fields: [waiterId], references: [id])
   addedBy User  @relation("CollaboratorAdder", fields: [addedById], references: [id])
 
   @@id([orderId, waiterId]) // composite PK prevents duplicate assignments
@@ -195,8 +195,7 @@ model OrderHistoryEntry {
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   actor User  @relation("HistoryActor", fields: [actorId], references: [id])
 
-  // valid event types enforced at DB level
-  @@check(event_type IN ('STATUS_CHANGE','LINE_ADDED','LINE_VOIDED','NOTE_ADDED','COLLABORATOR_ADDED','COLLABORATOR_REMOVED'), name: "event_type_valid")
+  // Event types are enforced by the Prisma enum EventType.
   @@index([orderId, createdAt])
   @@map("order_history_entries")
 }
