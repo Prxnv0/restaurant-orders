@@ -1,0 +1,249 @@
+// Prisma schema for the Restaurant Orders application.
+//
+// This schema defines all 9 tables required by the assignment:
+//   users, menu_items, orders, order_lines, order_collaborators,
+//   order_history_entries, order_notes, alerts, alert_dismissals
+//
+// Run `prisma migrate dev --name init` to create the tables.
+// Run `node prisma/seed.js` to populate demo data.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────────────────────────────────────
+enum Role {
+  MANAGER
+  WAITER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  role         Role     @default(WAITER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Primary waiter on orders
+  ordersAsPrimary        Order[]                 @relation("PrimaryWaiter")
+  // Lines created by this user
+  linesCreated            OrderLine[]             @relation("LineCreator")
+  // Lines voided by this user
+  linesVoided             OrderLine[]             @relation("LineVoider")
+  // Collaborator entries added by this user
+  collaborationsAdded     OrderCollaborator[]     @relation("CollaboratorAdder")
+  // Notes created by this user
+  notes                   OrderNote[]             @relation("NoteCreator")
+  // Alert dismissals performed by this user
+  alertDismissals         AlertDismissal[]        @relation("AlertDismisser")
+  // History entries recorded by this user
+  historyEntries          OrderHistoryEntry[]     @relation("HistoryActor")
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MENU ITEMS
+// ─────────────────────────────────────────────────────────────────────────────
+model MenuItem {
+  id          String   @id @default(uuid())
+  name        String
+  price       Decimal  @db.Decimal(10, 2)
+  isAvailable Boolean  @default(true) @map("is_available")
+  isArchived  Boolean  @default(false) @map("is_archived")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Lines referencing this menu item
+  orderLines  OrderLine[]
+
+  // Ensure price is non-negative via Prisma-level check
+  @@check(price >= 0, name: "menu_item_price_non_negative")
+  @@map("menu_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORDERS
+// ─────────────────────────────────────────────────────────────────────────────
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+model Order {
+  id               String      @id @default(uuid())
+  tableNumber      String      @map("table_number")
+  status           OrderStatus @default(PLACED)
+  primaryWaiterId  String      @map("primary_waiter_id")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+  servedAt         DateTime?   @map("served_at") // set when status → SERVED
+  archivedAt       DateTime?   @map("archived_at") // set on archive, null on restore
+
+  // Primary waiter relationship
+  primaryWaiter    User              @relation("PrimaryWaiter", fields: [primaryWaiterId], references: [id])
+  // Lines on this order
+  lines            OrderLine[]
+  // Collaborators on this order
+  collaborators    OrderCollaborator[]
+  // Immutable history entries
+  historyEntries   OrderHistoryEntry[]
+  // Notes on this order
+  notes            OrderNote[]
+  // Alert for this order (0 or 1)
+  alert            Alert?
+
+  // Enforce valid statuses at the DB level
+  @@check(status IN ('PLACED','ACCEPTED','PREPARING','READY','SERVED','CANCELLED'), name: "order_status_valid")
+  // Indexes for common queries
+  @@index([primaryWaiterId, createdAt])
+  @@index([status])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([archivedAt])
+  @@map("orders")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORDER LINES
+// ─────────────────────────────────────────────────────────────────────────────
+enum LineStatus {
+  ACTIVE
+  VOID
+}
+
+model OrderLine {
+  id                 String     @id @default(uuid())
+  orderId            String     @map("order_id")
+  menuItemId         String     @map("menu_item_id")
+  quantity           Int
+  unitPrice          Decimal    @map("unit_price") @db.Decimal(10, 2) // snapshot at time of addition
+  specialInstructions String?    @map("special_instructions")
+  status             LineStatus @default(ACTIVE)
+  voidReason         String?    @map("void_reason")
+  voidedAt           DateTime?  @map("voided_at")
+  voidedById         String?    @map("voided_by")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  createdById        String     @map("created_by")
+
+  order              Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem           MenuItem   @relation(fields: [menuItemId], references: [id])
+  createdBy          User       @relation("LineCreator", fields: [createdById], references: [id])
+  voidedBy           User?      @relation("LineVoider", fields: [voidedById], references: [id])
+
+  // quantity must be positive
+  @@check(quantity >= 1, name: "order_line_quantity_positive")
+  // valid statuses
+  @@check(status IN ('ACTIVE','VOID'), name: "order_line_status_valid")
+  @@index([orderId])
+  @@index([orderId, status])
+  @@map("order_lines")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORDER COLLABORATORS  (many-to-many join: order ↔ waiter)
+// ─────────────────────────────────────────────────────────────────────────────
+model OrderCollaborator {
+  orderId   String   @map("order_id")
+  waiterId  String   @map("waiter_id")
+  addedAt   DateTime @default(now()) @map("added_at")
+  addedById String   @map("added_by")
+
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  waiter  User  @relation(fields: [waiterId], references: [id])
+  addedBy User  @relation("CollaboratorAdder", fields: [addedById], references: [id])
+
+  @@id([orderId, waiterId]) // composite PK prevents duplicate assignments
+  @@map("order_collaborators")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORDER HISTORY ENTRIES  (append-only audit log)
+// NOTE: No UPDATE or DELETE routes are defined for this table.
+// Application-layer enforcement is the primary defence; DB is the backstop.
+// ─────────────────────────────────────────────────────────────────────────────
+enum EventType {
+  STATUS_CHANGE
+  LINE_ADDED
+  LINE_VOIDED
+  NOTE_ADDED
+  COLLABORATOR_ADDED
+  COLLABORATOR_REMOVED
+}
+
+model OrderHistoryEntry {
+  id        String    @id @default(uuid())
+  orderId   String    @map("order_id")
+  eventType EventType @map("event_type")
+  details   Json                     // shape varies by eventType — see seed.js for examples
+  actorId   String   @map("actor_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor User  @relation("HistoryActor", fields: [actorId], references: [id])
+
+  // valid event types enforced at DB level
+  @@check(event_type IN ('STATUS_CHANGE','LINE_ADDED','LINE_VOIDED','NOTE_ADDED','COLLABORATOR_ADDED','COLLABORATOR_REMOVED'), name: "event_type_valid")
+  @@index([orderId, createdAt])
+  @@map("order_history_entries")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORDER NOTES  (immutable — no edit/delete endpoints defined)
+// ─────────────────────────────────────────────────────────────────────────────
+model OrderNote {
+  id        String   @id @default(uuid())
+  orderId   String   @map("order_id")
+  content   String
+  createdById String @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdBy User @relation("NoteCreator", fields: [createdById], references: [id])
+
+  @@map("order_notes")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALERTS  (one per order; deleted when order reaches Ready/Served/Cancelled)
+// ─────────────────────────────────────────────────────────────────────────────
+model Alert {
+  id          String    @id @default(uuid())
+  orderId     String    @unique @map("order_id")
+  triggeredAt DateTime  @default(now()) @map("triggered_at")
+  resolvedAt  DateTime? @map("resolved_at")
+
+  order     Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  dismissals AlertDismissal[]
+
+  @@map("alerts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALERT DISMISSALS  (one row per dismissal event; enables repeated cycles)
+// ─────────────────────────────────────────────────────────────────────────────
+model AlertDismissal {
+  id          String   @id @default(uuid())
+  alertId     String   @map("alert_id")
+  dismissedAt DateTime @default(now()) @map("dismissed_at")
+  dismissedById String @map("dismissed_by")
+
+  alert     Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  dismissedBy User @relation("AlertDismisser", fields: [dismissedById], references: [id])
+
+  @@index([alertId, dismissedAt])
+  @@map("alert_dismissals")
+}
