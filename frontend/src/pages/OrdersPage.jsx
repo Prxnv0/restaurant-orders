@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { fetchOrders, createOrder } from '../api';
 import { useAuth } from '../context/AuthContext';
 
+const STATUS_OPTIONS = ['PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED', 'CANCELLED'];
+const SORT_OPTIONS = [
+  { value: 'placed_at', label: 'Placed Time' },
+  { value: 'status', label: 'Status' },
+  { value: 'table_number', label: 'Table Number' },
+];
+
 export default function OrdersPage() {
   const navigate = useNavigate();
   const { user, isManager } = useAuth();
@@ -12,9 +19,13 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Filters / search state
+  // Filters
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [waiterFilter, setWaiterFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [sortBy, setSortBy] = useState('placed_at');
+  const [sortDir, setSortDir] = useState('desc');
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
 
@@ -25,11 +36,13 @@ export default function OrdersPage() {
       const params = {
         page,
         limit,
-        sort: 'placed_at',
-        order: 'desc',
+        sort: sortBy,
+        order: sortDir,
       };
-      if (search) params.search = search;
+      if (search.trim()) params.search = search.trim();
       if (statusFilter) params.status = statusFilter;
+      if (waiterFilter.trim()) params.waiter = waiterFilter.trim();
+      if (dateFilter) params.date = dateFilter;
       if (isManager) params.include_archived = true;
       const data = await fetchOrders(params);
       setOrders(data.orders || []);
@@ -39,7 +52,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, page, limit, isManager]);
+  }, [search, statusFilter, waiterFilter, dateFilter, sortBy, sortDir, page, limit, isManager]);
 
   useEffect(() => {
     loadOrders();
@@ -48,7 +61,7 @@ export default function OrdersPage() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, waiterFilter, dateFilter, sortBy, sortDir]);
 
   const totalPages = Math.ceil(total / limit);
 
@@ -59,27 +72,61 @@ export default function OrdersPage() {
         <button onClick={() => navigate('/orders/new')}>+ New Order</button>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input
-          type="text"
-          placeholder="Search table..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ flex: 1, minWidth: 180, padding: '0.4rem' }}
-        />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: '0.4rem' }}>
-          <option value="">All statuses</option>
-          <option value="PLACED">Placed</option>
-          <option value="ACCEPTED">Accepted</option>
-          <option value="PREPARING">Preparing</option>
-          <option value="READY">Ready</option>
-          <option value="SERVED">Served</option>
-          <option value="CANCELLED">Cancelled</option>
-        </select>
+      {/* ── Filters ────────────────────────────────────────────────── */}
+      <div style={{ marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder="Search table..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ flex: 1, minWidth: 160, padding: '0.4rem' }}
+          />
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: '0.4rem' }}>
+            <option value="">All statuses</option>
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
+            ))}
+          </select>
+          {isManager && (
+            <input
+              type="text"
+              placeholder="Waiter (id or email)..."
+              value={waiterFilter}
+              onChange={(e) => setWaiterFilter(e.target.value)}
+              style={{ padding: '0.4rem', width: 180 }}
+            />
+          )}
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            style={{ padding: '0.4rem' }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.85rem', color: '#666' }}>Sort:</span>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ padding: '0.3rem' }}>
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <select value={sortDir} onChange={(e) => setSortDir(e.target.value)} style={{ padding: '0.3rem' }}>
+            <option value="desc">Newest / Z–A / 9–1</option>
+            <option value="asc">Oldest / A–Z / 1–9</option>
+          </select>
+          {(search || statusFilter || waiterFilter || dateFilter) && (
+            <button
+              onClick={() => { setSearch(''); setStatusFilter(''); setWaiterFilter(''); setDateFilter(''); }}
+              style={{ fontSize: '0.8rem', background: '#6c757d' }}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Orders table */}
+      {/* ── Orders table ───────────────────────────────────────────── */}
       {loading && <p>Loading orders…</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {!loading && !error && orders.length === 0 && (
@@ -87,6 +134,9 @@ export default function OrdersPage() {
       )}
       {!loading && orders.length > 0 && (
         <>
+          <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>
+            Showing {orders.length} of {total} order{total !== 1 ? 's' : ''} total
+          </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #ddd' }}>
@@ -120,7 +170,7 @@ export default function OrdersPage() {
             </tbody>
           </table>
 
-          {/* Pagination */}
+          {/* ── Pagination ─────────────────────────────────────────── */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               disabled={page <= 1}

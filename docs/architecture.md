@@ -89,14 +89,14 @@ The following are explicitly out of scope for this submission:
 
 | Component | Runtime Location | Status |
 |-----------|-----------------|--------|
-| React frontend | Browser (Vercel-hosted static + dynamic) | Implemented (skeleton; M8/M9 will surface full UI) |
-| Express backend | Render (Node.js process) | Implemented: auth (M2), menu CRUD (M3), orders + lines (M4), lifecycle + history (M5) |
+| React frontend | Browser (Vercel-hosted static + dynamic) | Implemented: auth (M2), orders + detail (M4), menu CRUD (M3), lifecycle + history (M5), collaborators + search (M6) |
+| Express backend | Render (Node.js process) | Implemented: auth (M2), menu CRUD (M3), orders + lines (M4), lifecycle + history (M5), collaborators + search (M6) |
 | PostgreSQL | Supabase (managed PostgreSQL) | Implemented (schema + seed) |
 | Prisma migrations | Run during backend setup, applied to Supabase | Implemented (migrations pending) |
 
 ## Request Path — Representative Action (revised)
 
-**Example: Waiter places an order for table 5 with two lines, then the kitchen accepts it, voids a line with a reason, and adds a note — implementation complete through M5.**
+**Example: Waiter places an order for table 5 with two lines, then the kitchen accepts it, voids a line with a reason, adds a collaborator, and adds a note — implementation complete through M6.**
 
 1. **Login:** The waiter navigates to the app, enters email/password. The browser POSTs to `/api/auth/login`. The backend validates credentials against the bcrypt-hashed password in the `users` table, generates a JWT, and returns it in an httpOnly, SameSite=Strict cookie. The frontend stores the decoded user in React context.
 
@@ -111,6 +111,10 @@ The following are explicitly out of scope for this submission:
 6. **Void a line:** The waiter selects a line and enters a reason. The browser POSTs to `/api/orders/:id/lines/:lineId/void` with `{ reason }`. The route enforces: (a) non-empty reason via Joi `voidLine` schema, (b) order not in `SERVED` or `CANCELLED`, (c) line not already `VOID`. On success the line is updated to `status = VOID`, `void_reason = reason`, `voided_at = NOW()`, `voided_by = current user`, and a `LINE_VOIDED` history entry is created (`{ line_id, reason }`). The voided line drops out of the running total immediately.
 
 7. **Add a note:** The waiter enters a note and submits. The browser POSTs to `/api/orders/:id/notes` with `{ content }`. The note is created and a `NOTE_ADDED` history entry is written. There is no PATCH or DELETE route for notes — they are append-only by absence of routes, not by triggers. Notes are listed via `GET /api/orders/:id/notes` (newest first).
+
+8. **Add a collaborator:** The primary waiter (or a manager) enters the collaborator's email in the order detail page. The browser POSTs to `/api/orders/:id/collaborators` with `{ waiter_id: 'collaborator@example.com' }`. The route looks the user up by email (or id) and confirms they are a WAITER role, not already on the order, and not the primary waiter. The `OrderCollaborator` row is created (composite PK prevents duplicates). A `COLLABORATOR_ADDED` history entry is written. The new collaborator now sees the order in their list on the next page load (the `GET /api/orders` waiter-scoping query includes `collaborators: { some: { waiterId } }`).
+
+9. **List orders:** The collaborator (or primary waiter) opens the orders page. The browser GETs `/api/orders`. The backend's role-based scoping returns orders where `primaryWaiterId = currentUserId OR collaborators contains currentUserId`. Waiters cannot see other waiters' orders. The list supports `search` (table number ILIKE), `status`, `date`, `waiter` filters (manager only), sort, and pagination. All filtering and sorting is done server-side; the response includes `{ orders, total }` for the pagination UI.
 
 ---
 

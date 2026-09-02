@@ -7,7 +7,7 @@ import NewOrderPage from './pages/NewOrderPage';
 import MenuPage from './pages/MenuPage';
 import DashboardPage from './pages/DashboardPage';
 import AlertsPage from './pages/AlertsPage';
-import ProtectedRoute from './components/ProtectedRoute';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import './styles.css';
 
 function NavLinks() {

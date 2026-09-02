@@ -113,3 +113,35 @@ export async function archiveOrder(orderId) {
 export async function restoreOrder(orderId) {
   return api.post(`/api/orders/${orderId}/restore`);
 }
+
+// Lifecycle + history helpers
+export async function changeOrderStatus(orderId, status) {
+  return api.patch(`/api/orders/${orderId}/status`, { status });
+}
+
+export async function voidOrderLine(orderId, lineId, reason) {
+  return api.post(`/api/orders/${orderId}/lines/${lineId}/void`, { reason });
+}
+
+export async function fetchOrderHistory(orderId) {
+  return api.get(`/api/orders/${orderId}/history`);
+}
+
+export async function fetchOrderNotes(orderId) {
+  return api.get(`/api/orders/${orderId}/notes`);
+}
+
+export async function addOrderNote(orderId, content) {
+  return api.post(`/api/orders/${orderId}/notes`, { content });
+}
+
+// Collaborator helpers
+// waiter_id accepts either a UUID or an email; the backend resolves either
+// to the target user. Email is the friendlier input for the UI.
+export async function addCollaborator(orderId, waiter_id) {
+  return api.post(`/api/orders/${orderId}/collaborators`, { waiter_id });
+}
+
+export async function removeCollaborator(orderId, waiterId) {
+  return api.delete(`/api/orders/${orderId}/collaborators/${waiterId}`);
+}

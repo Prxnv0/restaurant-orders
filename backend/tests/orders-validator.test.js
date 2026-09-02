@@ -8,7 +8,7 @@
 //
 // The route-level integration tests (with a real DB) are part of M10.
 import { describe, it, expect } from 'vitest';
-const { createOrder, addLine, listOrders, voidLine, changeStatus, addNote } = require('../src/validators/orders');
+const { createOrder, addLine, listOrders, voidLine, changeStatus, addNote, addCollaborator } = require('../src/validators/orders');
 
 describe('createOrder', () => {
   it('accepts a valid table number', () => {
@@ -222,5 +222,53 @@ describe('addNote', () => {
   it('trims whitespace', () => {
     const { value } = addNote.validate({ content: '  Hi  ' });
     expect(value.content).toBe('Hi');
+  });
+});
+
+describe('addCollaborator', () => {
+  const validUuid = '11111111-1111-1111-1111-111111111111';
+
+  it('accepts a valid waiter_id UUID', () => {
+    const { error } = addCollaborator.validate({ waiter_id: validUuid });
+    expect(error).toBeUndefined();
+  });
+
+  it('accepts an email as waiter_id', () => {
+    const { error } = addCollaborator.validate({ waiter_id: 'waiter@example.com' });
+    expect(error).toBeUndefined();
+  });
+
+  it('rejects missing waiter_id', () => {
+    const { error } = addCollaborator.validate({});
+    expect(error).toBeDefined();
+    expect(error.details[0].message).toMatch(/waiter_id.*required/i);
+  });
+
+  it('rejects empty waiter_id', () => {
+    const { error } = addCollaborator.validate({ waiter_id: '' });
+    expect(error).toBeDefined();
+  });
+
+  it('rejects whitespace-only waiter_id', () => {
+    const { error } = addCollaborator.validate({ waiter_id: '   ' });
+    expect(error).toBeDefined();
+  });
+
+  it('rejects numeric waiter_id', () => {
+    const { error } = addCollaborator.validate({ waiter_id: 12345 });
+    expect(error).toBeDefined();
+  });
+
+  it('rejects extra unknown fields', () => {
+    const { error } = addCollaborator.validate({
+      waiter_id: validUuid,
+      extra: 'should not be here',
+    });
+    expect(error).toBeDefined();
+  });
+
+  it('trims surrounding whitespace from waiter_id', () => {
+    const { value } = addCollaborator.validate({ waiter_id: '  waiter@example.com  ' });
+    expect(value.waiter_id).toBe('waiter@example.com');
   });
 });

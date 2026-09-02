@@ -96,16 +96,28 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 - The `AppError` 409 response now includes a `details` object so the client can present a helpful message and know which transitions are valid next. The `reason` field categorizes the violation (`cancel_too_late`, `skip_states`, `backward_transition`, `terminal_status`, `no_op`, `illegal_transition`).
 - Route-level integration tests (with a real DB) are deferred to M10. Validator + state-machine unit tests give the rule coverage the M5 spec implies.
 
-### Milestone 6 — Collaborators + Order Search (est. 2 hours) ⏳ PENDING
+### Milestone 6 — Collaborators + Order Search (est. 2 hours) ✅ COMPLETE
 **Requirements satisfied:**
 - **Goal 5** (full): primary waiter, add/remove collaborators, collaborator = equal access, "one list" of primary + collab orders for each waiter
 - **Goal 6** (full): text search on table number, status/waiter/date filters, sort by placed time/status/table, pagination with total match count, all server-side
 
-**Backend scope:**
-- `POST /api/orders/:id/collaborators`: primary or manager only; add a waiter not already on the order; history entry
-- `DELETE /api/orders/:id/collaborators/:waiterId`: primary or manager only; history entry
-- `GET /api/orders`: query params `search` (table_number ILIKE), `status` (single or array), `waiter` (user id or email), `date` (created_at day), `sort` (placed_at|status|table_number, asc|desc), `page`, `limit`; scope by role — manager sees all, waiter sees only primary or collaborator; default excludes archived; return `{ orders, total }`
-- Decisions to record: how to combine filters, default sort and limit
+**Delivered:**
+- Backend: `POST /api/orders/:id/collaborators` — primary waiter or manager only; accepts waiter id or email (route resolves by id OR email); rejects adding the primary waiter; composite PK enforces uniqueness; history entry `COLLABORATOR_ADDED`
+- Backend: `DELETE /api/orders/:id/collaborators/:waiterId` — primary waiter or manager only; rejects removing primary waiter; history entry `COLLABORATOR_REMOVED`
+- Backend: `GET /api/orders` — already fully implemented in M4 scope; confirmed all query params work: `search` (table_number ILIKE), `status` (single or array), `waiter` (id or email, manager-only), `date` (created_at day), `sort`, `order`, `page`, `limit`, `include_archived`
+- Backend: `addCollaborator` Joi validator (accepts UUID or email); updated validator barrel
+- Backend: 3 new validator test cases (now 43 orders validator tests, 101 total)
+- Frontend: `api.js` — added `changeOrderStatus`, `voidOrderLine`, `fetchOrderHistory`, `fetchOrderNotes`, `addOrderNote`, `addCollaborator`, `removeCollaborator`
+- Frontend: `OrderDetailPage` — status change buttons (next statuses from state machine), collaborator list with remove buttons (primary/manager only), add-collaborator form (email input), void-line inline form with reason prompt
+- Frontend: `OrdersPage` — full filter row (table search, status dropdown, waiter filter [manager only], date picker), sort selector with direction toggle, "X of Y total" counter, clear-filters button, pagination
+- Frontend: Fixed pre-existing import error in `App.jsx` (named vs default export on `ProtectedRoute`)
+- Decisions 20 (filter combination), 21 (defaults), 22 (waiter_id accepts email or UUID) added
+
+**Notes:**
+- The `GET /api/orders` search/filter/sort/pagination was already implemented in M4 scope (needed for OrdersPage); M6 confirms all params are wired and surfaces them in the UI.
+- The `waiter` query param is honoured only for managers; waiters' waiter param is silently ignored (the server enforces role-based scoping regardless of what the client sends).
+- `include_archived` defaults to `false`; the archive/restore toggle is available via the order detail page, not on the list.
+- History timeline and notes panel UI are in M9 scope (not added here).
 
 ### Milestone 7 — Dashboard + Alerts + CSV (est. 2 hours) ⏳ PENDING
 **Requirements satisfied:**
@@ -378,7 +390,7 @@ These rules exist so that a reviewer — or a future session — can recover the
 | 3. Menu + Bulk | 2h | ~1.5h | ✅ |
 | 4. Orders + Lines | 2h | ~2h | ✅ |
 | 5. Lifecycle + History | 2h | ~1.5h | ✅ |
-| 6. Collaborators + Search | 2h | — | ⏳ |
+| 6. Collaborators + Search | 2h | ~1.5h | ✅ |
 | 7. Dashboard + Alerts + CSV | 2h | — | ⏳ |
 | 8. Frontend: Manager | 1.5h | — | ⏳ |
 | 9. Frontend: Waiter | 1.5h | — | ⏳ |
@@ -386,7 +398,7 @@ These rules exist so that a reviewer — or a future session — can recover the
 | 11. Deploy + Smoke | 0.5h | — | ⏳ |
 | 12. Pre-Submission Check | 0.25h | — | ⏳ |
 | 13. Docs Final | 0.25h | — | ⏳ |
-| **Total** | **~15.5h** | **~9h so far** | 6 milestones remain |
+| **Total** | **~15.5h** | **~10.5h so far** | 5 milestones remain |
 
 ---
 

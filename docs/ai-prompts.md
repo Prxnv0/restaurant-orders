@@ -177,6 +177,53 @@ So the AI's first draft of `assertValidTransition` matched the spec without iter
 
 ---
 
+## Milestone 6 implementation — Collaborators + Order Search
+
+### What we asked
+"Start Milestone 6. First read docs/plan.md and follow the Session-start contract and all Documentation & Traceability Rules. Treat the repository documentation as the source of truth, not conversation memory"
+
+### What we got
+The AI:
+- Re-read `docs/plan.md` for the M6 scope (Goal 5 + Goal 6), the milestone-completion checklist, the filter and pagination requirements, and the Documentation & Traceability Rules.
+- Implemented `POST /api/orders/:id/collaborators` and `DELETE /api/orders/:id/collaborators/:waiterId` in `backend/src/routes/orders.js` — primary waiter or manager only; rejects adding/removing the primary waiter; uses the composite PK `(orderId, waiterId)` for uniqueness; writes `COLLABORATOR_ADDED` / `COLLABORATOR_REMOVED` history entries.
+- Added `addCollaborator` Joi validator (accepts UUID or email); updated the validators barrel.
+- Confirmed the existing `GET /api/orders` already implements search/filter/sort/pagination (from M4) and exposed it in the UI.
+- Added 6 new validator test cases (now 43 in `orders-validator.test.js`).
+- All 101 tests pass (40 state machine + 43 orders validator + 18 menu validator).
+- Frontend `api.js`: added `changeOrderStatus`, `voidOrderLine`, `fetchOrderHistory`, `fetchOrderNotes`, `addOrderNote`, `addCollaborator`, `removeCollaborator`.
+- Frontend `OrderDetailPage`: status change buttons (driven by the state machine), collaborator list with remove buttons (primary/manager only), add-collaborator form (email input), void-line inline form with reason prompt.
+- Frontend `OrdersPage`: full filter row (table search, status, waiter [manager only], date), sort + direction selectors, "X of Y total" counter, clear-filters button, pagination.
+- Frontend `App.jsx`: fixed a pre-existing named-vs-default import on `ProtectedRoute` (blocker for the build).
+- Frontend builds clean (`npm run build` succeeds, 188KB gz).
+- Updated `docs/plan.md` (M6 marked ✅, estimate vs actual, delivered list, notes).
+- Added Decisions 20, 21, 22 to `docs/decisions.md`.
+- Updated `docs/architecture.md` (M6 status, request path with collaborators).
+- Recorded the M6 prompts in `docs/ai-prompts.md` (this entry).
+
+### What we corrected
+**Validator too strict for the chosen UI shape, and what we did about it:**
+
+The first pass of the `addCollaborator` validator was `Joi.string().uuid().required()`. The AI was about to require a `GET /api/users` endpoint to render a user picker in the UI.
+
+On reflection (and a brief second look at the route), the simpler shape was to accept either a UUID or an email and look the user up by `OR: [{ id }, { email }]`. The validator became `Joi.string().trim().min(1).max(254).required()` and the route was updated to resolve the input to a user record.
+
+**Correction:** Changed the validator to accept both, updated the test cases (added an email-acceptance test and a whitespace-trim test), updated the route to resolve by id OR email, removed the proposed `fetchUsers` helper from the frontend, and recorded the choice as Decision 22.
+
+**Pre-existing build blocker (not in M6 scope, but blocking verification):**
+
+`App.jsx` was doing `import ProtectedRoute from './components/ProtectedRoute'` while `ProtectedRoute.jsx` exports a named function `ProtectedRoute`. The build had been broken since M2; M6 surfaced it because the M6 changes to `OrdersPage` and `OrderDetailPage` are the first UI edits since the broken import was introduced, and `npm run build` was run to verify M6.
+
+**Correction:** Changed the import in `App.jsx` to the named form `{ ProtectedRoute }` and verified `npm run build` succeeds. Recorded in `docs/bugs.md` as a separate entry per the Documentation & Traceability Rules.
+
+### What was already correct
+The `GET /api/orders` search/filter/sort/pagination was already implemented in M4 scope; the M4 plan said it was needed for the M4 frontend list. The validator, where-clause builder, role-based scoping, and `include_archived` default were all already in place. M6 only had to surface them in the UI.
+
+### Other prompts
+
+Beyond the explicit "Start Milestone 6" prompt, no further prompts were issued — the M6 work is a single focused milestone that the plan describes end-to-end. The decisions and the implementation followed the plan without ambiguity.
+
+---
+
 *Implementation prompts continue below as the project progresses.*
 
 ---

@@ -1,22 +1,24 @@
 // Order routes.
-//   POST   /api/orders                  — create order (waiter/manager)
-//   GET    /api/orders                  — list orders (scoped by role, with search/filter/sort/pagination)
-//   GET    /api/orders/:id              — get order with lines and computed total
-//   POST   /api/orders/:id/lines        — add line to order (primary/collab/manager)
-//   POST   /api/orders/:id/archive      — archive order (primary/manager)
-//   POST   /api/orders/:id/restore      — restore archived order (primary/manager)
-//   PATCH  /api/orders/:id/status      — change order status (state machine enforced)
+//   POST   /api/orders                       — create order (waiter/manager)
+//   GET    /api/orders                       — list orders (scoped by role, with search/filter/sort/pagination)
+//   GET    /api/orders/:id                   — get order with lines and computed total
+//   POST   /api/orders/:id/lines             — add line to order (primary/collab/manager)
+//   POST   /api/orders/:id/archive           — archive order (primary/manager)
+//   POST   /api/orders/:id/restore           — restore archived order (primary/manager)
+//   PATCH  /api/orders/:id/status           — change order status (state machine enforced)
 //   POST   /api/orders/:id/lines/:lineId/void — void a line
-//   GET    /api/orders/:id/history      — get history timeline
-//   GET    /api/orders/:id/notes        — list notes
-//   POST   /api/orders/:id/notes        — add a note
+//   GET    /api/orders/:id/history           — get history timeline
+//   GET    /api/orders/:id/notes             — list notes
+//   POST   /api/orders/:id/notes             — add a note
+//   POST   /api/orders/:id/collaborators     — add collaborator (primary/manager only)
+//   DELETE /api/orders/:id/collaborators/:waiterId — remove collaborator (primary/manager only)
 const express = require('express');
 const prisma = require('../db');
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/authorize');
 const requireOrderAccess = require('../middleware/resourceOwner');
 const AppError = require('../utils/errors');
-const { createOrder, addLine, listOrders, voidLine, changeStatus, addNote } = require('../validators');
+const { createOrder, addLine, listOrders, voidLine, changeStatus, addNote, addCollaborator } = require('../validators');
 const { assertValidTransition } = require('../stateMachine');
 
 const router = express.Router();
@@ -502,6 +504,142 @@ router.post('/:id/notes', auth, requireOrderAccess, async (req, res, next) => {
     }, req.user.id);
 
     res.status(201).json({ note });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/orders/:id/collaborators ──────────────────────────────────
+// Add a waiter as a collaborator on an order. Primary waiter or manager only.
+router.post('/:id/collaborators', auth, requireOrderAccess, async (req, res, next) => {
+  try {
+    joiCheck(addCollaborator, req.body);
+
+    const order = req.order;
+
+    // Only primary waiter or manager can add collaborators.
+    const isManager = req.user.role === 'MANAGER';
+    const isPrimary = order.primaryWaiterId === req.user.id;
+    if (!isManager && !isPrimary) {
+      return next(
+        AppError.FORBIDDEN('Only the primary waiter or a manager can add collaborators')
+      );
+    }
+
+    const { waiter_id } = req.body;
+
+    // Reject if the target is the primary waiter — they are already on the order.
+    if (waiter_id === order.primaryWaiterId) {
+      return next(
+        AppError.CONFLICT('The primary waiter is already on the order')
+      );
+    }
+
+    // Look up the target by id OR email so the frontend can identify waiters
+    // without a separate user directory endpoint.
+    const target = await prisma.user.findFirst({
+      where: {
+        OR: [{ id: waiter_id }, { email: waiter_id }],
+      },
+      select: { id: true, role: true, name: true, email: true },
+    });
+    if (!target) {
+      return next(AppError.NOT_FOUND('User'));
+    }
+    if (target.role !== 'WAITER') {
+      return next(AppError.BAD_REQUEST('Collaborator must be a waiter'));
+    }
+
+    // The DB row stores the resolved id, not the raw input.
+    const targetId = target.id;
+
+    // Composite PK (orderId, waiterId) gives us uniqueness for free.
+    // Prisma throws P2002 on conflict — translate to 409.
+    let collab;
+    try {
+      collab = await prisma.orderCollaborator.create({
+        data: {
+          orderId: order.id,
+          waiterId: targetId,
+          addedById: req.user.id,
+        },
+        include: {
+          waiter: { select: { id: true, name: true } },
+        },
+      });
+    } catch (err) {
+      if (err.code === 'P2002') {
+        return next(
+          AppError.CONFLICT('This waiter is already a collaborator on the order')
+        );
+      }
+      throw err;
+    }
+
+    // History entry
+    await makeHistory(order.id, 'COLLABORATOR_ADDED', {
+      waiter_id: targetId,
+    }, req.user.id);
+
+    res.status(201).json({ collaborator: collab });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── DELETE /api/orders/:id/collaborators/:waiterId ──────────────────────
+// Remove a waiter as a collaborator on an order. Primary waiter or manager only.
+router.delete('/:id/collaborators/:waiterId', auth, requireOrderAccess, async (req, res, next) => {
+  try {
+    const order = req.order;
+
+    // Only primary waiter or manager can remove collaborators.
+    const isManager = req.user.role === 'MANAGER';
+    const isPrimary = order.primaryWaiterId === req.user.id;
+    if (!isManager && !isPrimary) {
+      return next(
+        AppError.FORBIDDEN('Only the primary waiter or a manager can remove collaborators')
+      );
+    }
+
+    // Reject removing the primary waiter.
+    if (req.params.waiterId === order.primaryWaiterId) {
+      return next(
+        AppError.BAD_REQUEST('Cannot remove the primary waiter from the order')
+      );
+    }
+
+    // Find existing collaborator row.
+    const existing = await prisma.orderCollaborator.findUnique({
+      where: {
+        orderId_waiterId: {
+          orderId: order.id,
+          waiterId: req.params.waiterId,
+        },
+      },
+    });
+
+    if (!existing) {
+      return next(
+        AppError.NOT_FOUND('Collaborator on this order')
+      );
+    }
+
+    await prisma.orderCollaborator.delete({
+      where: {
+        orderId_waiterId: {
+          orderId: order.id,
+          waiterId: req.params.waiterId,
+        },
+      },
+    });
+
+    // History entry
+    await makeHistory(order.id, 'COLLABORATOR_REMOVED', {
+      waiter_id: req.params.waiterId,
+    }, req.user.id);
+
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

@@ -45,6 +45,14 @@ const addNote = Joi.object({
   content: Joi.string().trim().min(1).max(2000).required(),
 });
 
+// ── Add collaborator ────────────────────────────────────────────────────
+// waiter_id accepts either a UUID (user id) or an email. The route resolves
+// either to the target user. Email is preferred for the frontend because we
+// don't expose a user directory endpoint.
+const addCollaborator = Joi.object({
+  waiter_id: Joi.string().trim().min(1).max(254).required(),
+});
+
 module.exports = {
   createOrder,
   addLine,
@@ -52,4 +60,5 @@ module.exports = {
   voidLine,
   changeStatus,
   addNote,
+  addCollaborator,
 };
