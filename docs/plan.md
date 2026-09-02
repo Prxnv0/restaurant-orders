@@ -268,6 +268,77 @@ Documentation is updated **as the work happens**, not from memory at the end:
 
 ---
 
+## Documentation & Traceability Rules
+
+These rules apply from **Milestone 5 through the final milestone** (M13). They are the binding contract for documentation, AI assistance, and milestone sign-off. They supplement — and tighten — the "Living Documentation Rules" above.
+
+### `docs/ai-prompts.md` — Prompt and result log
+
+- Record **every meaningful AI / Claude prompt** used during implementation.
+- For each prompt, preserve:
+  - the **actual prompt text** (verbatim, not paraphrased)
+  - the **purpose** — what the prompt was trying to accomplish
+  - the **result** — what was produced (concrete output, not a vague summary)
+  - **correctness** — was the output correct, partially correct, or wrong?
+  - any **correction** applied when the AI output was wrong
+- **Never fabricate historical prompts.** If a prompt wasn't recorded at the time, do not invent it later. The log is a record of what actually happened, not a reconstruction.
+- Prompts that produced wrong output are **especially important** — they are the most useful entries for the reviewer and for future work.
+
+### `docs/architecture.md` — Live architecture reference
+
+- Keep `docs/architecture.md` **synchronized with the actual implemented architecture**.
+- Update it **whenever a milestone changes** any of:
+  - routes (new endpoint, removed endpoint, route shape change)
+  - components (new page, new shared component, role-scoped UI)
+  - database interactions (new query, new transaction, new snapshot rule)
+  - authentication / authorization (new middleware, new role gate, new access rule)
+  - state transitions (new valid transition, new terminal state, new blocking rule)
+  - testing structure (new test file, new test harness, new test database)
+  - or any other **meaningful architectural concern**
+- If a milestone does not change architecture, no update is required — but check explicitly.
+- The file must never describe a design that the code does not implement. If the code diverged, the docs follow the code, not the original plan.
+
+### `docs/bugs.md` — Bug and issue log
+
+- Continue the bug log from M4 onward. M3 bugs will be reconstructed separately; do not back-fill them here.
+- For every **significant bug** record:
+  - **Milestone** — which milestone it was found in
+  - **Bug / issue** — one-line description
+  - **What was observed** — concrete failure (status code, wrong output, crash)
+  - **Root cause** — the actual underlying cause, not the symptom
+  - **Fix / countermeasure** — the change made
+  - **Why this countermeasure was chosen / trade-off** — reasoning, alternative rejected
+  - **How it was verified** — the test, command, or inspection that confirmed the fix
+- **Do not invent bugs.** Do not record trivial transient errors (one-time network blips, typos caught by the next test run, dev-only environment issues).
+- The log is for **meaningful** bugs and implementation issues — those that influenced a design decision, blocked a milestone, or revealed a non-obvious interaction in the system.
+
+### Milestone-completion checklist (mandatory, every milestone M5–M13)
+
+Before declaring a milestone **COMPLETE** in this document:
+
+1. **Verify requirements** — every requirement listed in the milestone's "Requirements satisfied" section is actually implemented and demonstrable.
+2. **Run relevant tests / checks** — at minimum the validator-level test suite; integration tests if the harness is in place; manual API smoke if a DB is available.
+3. **Update `docs/plan.md`** — change the milestone status from ⏳ / 🔄 to ✅, fill the "Estimate vs Actual" entry, and add the "Delivered" / "Notes" subsections.
+4. **Update `docs/ai-prompts.md`** — record every meaningful prompt used during the milestone, with the fields above.
+5. **Update `docs/architecture.md`** — only if the milestone changed architecture per the rules above. If unchanged, no edit; if changed, document the change.
+6. **Update `docs/bugs.md`** — record any significant bugs found and resolved during the milestone. If none, no edit.
+7. **Review `git diff` and `git status`** — confirm only intended changes for the milestone are staged. Flag any unexpected files before committing.
+8. **Only then** mark the milestone ✅ in this document and in the Estimate vs Actual table.
+
+A milestone is not complete until all eight steps are done.
+
+### Session-start contract (every new Claude Code session)
+
+At the **beginning of every new Claude Code session** working on this project:
+
+1. **Read `docs/plan.md`** — current milestone status, scope, and these rules.
+2. **Follow these documentation rules** for every action in the session.
+3. **Do not rely on conversation memory** — the documentation is the source of truth for what was decided, what was built, and what is next. If something is missing from the docs, fix the docs first, then act.
+
+These rules exist so that a reviewer — or a future session — can recover the full state of the project from the `docs/` directory alone, without depending on prior conversation context.
+
+---
+
 ## Pre-Submission Checklist (must pass before push)
 
 - [ ] GitHub repo is set to **Public** (verify in repo Settings)
