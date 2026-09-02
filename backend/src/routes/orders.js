@@ -5,13 +5,19 @@
 //   POST   /api/orders/:id/lines        — add line to order (primary/collab/manager)
 //   POST   /api/orders/:id/archive      — archive order (primary/manager)
 //   POST   /api/orders/:id/restore      — restore archived order (primary/manager)
+//   PATCH  /api/orders/:id/status      — change order status (state machine enforced)
+//   POST   /api/orders/:id/lines/:lineId/void — void a line
+//   GET    /api/orders/:id/history      — get history timeline
+//   GET    /api/orders/:id/notes        — list notes
+//   POST   /api/orders/:id/notes        — add a note
 const express = require('express');
 const prisma = require('../db');
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/authorize');
 const requireOrderAccess = require('../middleware/resourceOwner');
 const AppError = require('../utils/errors');
-const { createOrder, addLine, listOrders, voidLine } = require('../validators');
+const { createOrder, addLine, listOrders, voidLine, changeStatus, addNote } = require('../validators');
+const { assertValidTransition } = require('../stateMachine');
 
 const router = express.Router();
 
@@ -315,6 +321,187 @@ router.post('/:id/restore', auth, requireOrderAccess, async (req, res, next) => 
     });
 
     res.json({ order: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── PATCH /api/orders/:id/status ───────────────────────────────────────
+// Change order status — all transitions go through the state machine.
+//   If status -> SERVED: sets served_at
+//   If status -> READY|SERVED|CANCELLED: resolves any active alert
+router.patch('/:id/status', auth, requireOrderAccess, async (req, res, next) => {
+  try {
+    joiCheck(changeStatus, req.body);
+
+    const order = req.order;
+    const { status: newStatus } = req.body;
+
+    // Reject if order is archived
+    if (order.archivedAt) {
+      return next(AppError.BAD_REQUEST('Cannot change status of an archived order'));
+    }
+
+    // Assert the transition is legal (throws AppError 409 on violation)
+    assertValidTransition(order.status, newStatus);
+
+    // Build update payload
+    const updateData = { status: newStatus };
+
+    // Set served_at when status reaches SERVED
+    if (newStatus === 'SERVED') {
+      updateData.servedAt = new Date();
+    }
+
+    // Resolve any active alert when reaching READY, SERVED, or CANCELLED
+    const alertTerminalStatuses = ['READY', 'SERVED', 'CANCELLED'];
+    const resolveAlert = alertTerminalStatuses.includes(newStatus);
+
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        ...updateData,
+        ...(resolveAlert ? { alert: { update: { resolvedAt: new Date() } } } : {}),
+      },
+    });
+
+    // Create history entry for the status change
+    await makeHistory(order.id, 'STATUS_CHANGE', {
+      old_status: order.status,
+      new_status: newStatus,
+    }, req.user.id);
+
+    res.json({ order: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/orders/:id/lines/:lineId/void ───────────────────────────
+// Void a line — requires a non-empty reason.
+// Blocked if order is SERVED or CANCELLED, or if line is already VOID.
+router.post('/:id/lines/:lineId/void', auth, requireOrderAccess, async (req, res, next) => {
+  try {
+    joiCheck(voidLine, req.body);
+
+    const order = req.order;
+
+    // Block voiding on terminal order states
+    if (order.status === 'SERVED' || order.status === 'CANCELLED') {
+      return next(
+        AppError.CONFLICT(
+          `Cannot void a line on an order with status ${order.status}`
+        )
+      );
+    }
+
+    const { reason } = req.body;
+
+    // Find the line — must belong to this order
+    const line = await prisma.orderLine.findFirst({
+      where: { id: req.params.lineId, orderId: order.id },
+    });
+
+    if (!line) {
+      return next(AppError.NOT_FOUND('Order line'));
+    }
+
+    // Block if already void
+    if (line.status === 'VOID') {
+      return next(
+        AppError.CONFLICT('This line has already been voided')
+      );
+    }
+
+    const updated = await prisma.orderLine.update({
+      where: { id: line.id },
+      data: {
+        status: 'VOID',
+        voidReason: reason,
+        voidedAt: new Date(),
+        voidedById: req.user.id,
+      },
+    });
+
+    // Create history entry
+    await makeHistory(order.id, 'LINE_VOIDED', {
+      line_id: line.id,
+      reason,
+    }, req.user.id);
+
+    res.json({ line: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/orders/:id/history ────────────────────────────────────────
+// Returns all history entries for an order, newest last (ordered by created_at asc).
+router.get('/:id/history', auth, requireOrderAccess, async (req, res, next) => {
+  try {
+    const entries = await prisma.orderHistoryEntry.findMany({
+      where: { orderId: req.params.id },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        actor: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    res.json({ history: entries });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/orders/:id/notes ──────────────────────────────────────────
+// Returns all notes for an order, newest first.
+router.get('/:id/notes', auth, requireOrderAccess, async (req, res, next) => {
+  try {
+    const notes = await prisma.orderNote.findMany({
+      where: { orderId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        createdBy: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    res.json({ notes });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/orders/:id/notes ─────────────────────────────────────────
+// Append a note to an order — append-only, no edit or delete.
+router.post('/:id/notes', auth, requireOrderAccess, async (req, res, next) => {
+  try {
+    joiCheck(addNote, req.body);
+
+    const { content } = req.body;
+
+    const note = await prisma.orderNote.create({
+      data: {
+        orderId: req.params.id,
+        content,
+        createdById: req.user.id,
+      },
+      include: {
+        createdBy: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    // Create history entry
+    await makeHistory(req.params.id, 'NOTE_ADDED', {
+      content,
+    }, req.user.id);
+
+    res.status(201).json({ note });
   } catch (err) {
     next(err);
   }

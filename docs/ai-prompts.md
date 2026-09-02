@@ -137,6 +137,44 @@ When writing the seed script, the AI's first pass contained an experimental clea
 
 The same cleanup pass also fixed a wrong table name in the initial TRUNCATE block: the model is `AlertDismissal` (mapped to `alert_dismissals`) but the first version of the seed had `order_dismissals`. Corrected before any commit.
 
+## Milestone 5 implementation — Lifecycle, Void, History
+
+### What we asked
+"lets move to milestone 5" — the user gave a single, short directive to begin M5.
+
+### What we got
+The AI:
+- Re-read `docs/plan.md` for the M5 scope, the milestone-completion checklist, the `VALID_TRANSITIONS` requirement, the human-message requirement, the `served_at` and `resolvedAt` rules, the line-void blocking rules, and the history append-only rule.
+- Created `backend/src/stateMachine.js` (new module) with `VALID_TRANSITIONS`, `validNextStatuses`, `canTransition`, and `assertValidTransition`. Each illegal move throws an `AppError` 409 with `code: 'CONFLICT'`, `details.code: 'INVALID_TRANSITION'`, and a categorising `details.reason` (`skip_states`, `backward_transition`, `cancel_too_late`, `terminal_status`, `no_op`).
+- Added a `withDetails(details)` chaining helper to `AppError` in `backend/src/utils/errors.js` so any error can carry a structured payload.
+- Added 5 new routes to `backend/src/routes/orders.js`: `PATCH /:id/status`, `POST /:id/lines/:lineId/void`, `GET /:id/history`, `GET /:id/notes`, `POST /:id/notes`. Each one enforces the spec'd blocking rules (line void blocked on SERVED/CANCELLED, line void blocked if line is already VOID, status change blocked on archived orders, etc.) and writes a history entry.
+- Added `changeStatus` and `addNote` Joi validators to `backend/src/validators/orders.js` and re-exported them from the barrel.
+- Wrote `backend/tests/stateMachine.test.js` with 40 cases covering the legal map, every illegal move, the reason classification, the error message content, terminal states, unknown statuses, and self-transitions.
+- Added 10 cases for `changeStatus` and `addNote` to `backend/tests/orders-validator.test.js` (now 35 total).
+- Updated `docs/plan.md` to mark M5 ✅ and add the "Estimate vs Actual" entry.
+- Added Decisions 18 and 19 to `docs/decisions.md`.
+- Updated `docs/architecture.md` request path and key decisions.
+- All 93 tests pass (40 state machine + 35 orders validator + 18 menu validator).
+
+### What we corrected
+**AI test that was wrong, and what we did about it:**
+
+In the first run of `stateMachine.test.js`, one test failed: "rejects backward move from SERVED to READY" expected `reason: 'backward_transition'` but the actual reason was `'terminal_status'`.
+
+The state machine's `assertValidTransition` checks branches in this order: (1) unknown current status, (2) unknown attempted status, (3) self-transition, (4) cancellation-after-preparing (`cancel_too_late`), (5) terminal-status (`SERVED` and `CANCELLED`), (6) skip-states, (7) backward-transitions, (8) generic illegal transition. `SERVED → READY` matches branch (5) first.
+
+**Correction:** The behaviour is actually more accurate — `SERVED` is a terminal status, and saying "you can't go backward from a terminal state" is the better user-facing message than "you can't go backward" alone. The test was changed to assert the actual behaviour (`reason: 'terminal_status'`) with a comment explaining that terminal_status takes precedence over backward_transition. The user-facing message still explains the rule clearly ("Order is in terminal status SERVED and cannot be changed").
+
+**Other tests already correct:** The 39 other test cases in the state machine test passed on the first run, including every legal transition, every illegal skip, every illegal cancellation, unknown-status handling, and the error-shape assertions.
+
+### What we asked (state-machine shape — no correction needed)
+The original M5 spec from `docs/plan.md` was unambiguous about:
+- The transition map (Placed→Accepted→Preparing→Ready→Served, Cancelled only while Placed/Accepted)
+- The error response (409 INVALID_TRANSITION with current_status, attempted_status, and human message)
+- The `served_at` and alert-resolution side effects
+
+So the AI's first draft of `assertValidTransition` matched the spec without iteration. The only correction in this milestone was the test, not the implementation.
+
 ---
 
 *Implementation prompts continue below as the project progresses.*

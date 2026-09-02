@@ -133,6 +133,26 @@ Additional decisions will be recorded here as the project develops. Examples tha
 - **Why:** The README is explicit that lines can be added until the order is "Served or cancelled" — that's the natural end of an order's life. The status model treats `READY` as still a state where the order is open and could plausibly receive a last-minute addition (e.g., "and a coffee too"). The error code 409 (Conflict) is the right HTTP code because the request is well-formed but conflicts with the current resource state.
 - **What users see:** On a served or cancelled order, the "Add Line" form on the order detail page is hidden, and any direct API call receives a 409 with a message naming the blocking status.
 
+## Decision 18 — State machine encoded as a single transitions map (M5)
+
+- **Chose:** The legal order status transitions are encoded in a single constant `VALID_TRANSITIONS` in `backend/src/stateMachine.js`, with one function `assertValidTransition(from, to)` that every status-changing route calls. The map is a small, declarative structure: `{ PLACED: ['ACCEPTED', 'CANCELLED'], ACCEPTED: ['PREPARING', 'CANCELLED'], PREPARING: ['READY'], READY: ['SERVED'], SERVED: [], CANCELLED: [] }`.
+- **Rejected:** A class hierarchy of `OrderState` subclasses with a `canTransitionTo(nextState)` method (overkill — six states with one map is simpler), scattered `if (currentStatus === 'X' && newStatus === 'Y')` checks inside each route handler (would make the rule impossible to audit in one place), or relying on the database `CHECK` constraint (cannot express transition rules in SQL).
+- **Why:** One map is the simplest thing that captures the entire rule. A new state or transition is a one-line change. A test can import the map and assert the rule directly without a database. The single function provides a uniform error shape: every illegal move throws the same `AppError` 409 with `code: INVALID_TRANSITION` and a `details` object that includes `current_status`, `attempted_status`, `valid_next_statuses`, and a categorising `reason` (`skip_states`, `backward_transition`, `cancel_too_late`, `terminal_status`, `no_op`, `illegal_transition`). The client can show the user a helpful message and the categorising reason is useful for tests and logging.
+- **What users see:** Every illegal status change returns the same 409 shape. The `details.valid_next_statuses` array tells the client which buttons to render next, and the `details.reason` and `message` fields explain what went wrong in human terms.
+- **Where the map lives:** `backend/src/stateMachine.js` — a dedicated module, not buried inside the route file. This makes the rule testable in isolation and prevents the routes from drifting out of sync with each other.
+
+## Decision 19 — History `details` JSON shape (M5)
+
+- **Chose:** Standardised the `details` JSONB column on `order_history_entries` so every event type uses a consistent camelCase-shaped object with a single primary identifier and any relevant secondary fields. The shapes are:
+  - `STATUS_CHANGE`: `{ old_status, new_status }`
+  - `LINE_ADDED`: `{ line_id, menu_item_id, quantity, unit_price }`
+  - `LINE_VOIDED`: `{ line_id, reason }`
+  - `NOTE_ADDED`: `{ content }`
+  - `COLLABORATOR_ADDED` / `COLLABORATOR_REMOVED` (M6): `{ waiter_id }`
+- **Rejected:** Free-form details per event type with no contract (would make timeline rendering fragile and require a switch statement everywhere details is read), storing every field as a top-level column on the history table (would require schema migrations every time a new event type is added and produce a sparse table).
+- **Why:** JSONB gives us per-event-type flexibility without schema migrations. The standardised shape per type keeps the timeline renderer simple: it can dispatch on `event_type` and read known fields. Storing `line_id` and `waiter_id` inside the details JSON lets the timeline link to the relevant resource even if the resource is later deleted (a soft FK that survives CASCADE on the order — the history entry still records who did what, when, with which resource).
+- **What users see:** The order history timeline panel renders a clean chronological list. Each entry has an icon by `event_type`, a human-readable summary built from the known fields, the actor's name, and the timestamp.
+
 ---
 
 *Decisions continue below as implementation progresses.*

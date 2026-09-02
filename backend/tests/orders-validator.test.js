@@ -8,7 +8,7 @@
 //
 // The route-level integration tests (with a real DB) are part of M10.
 import { describe, it, expect } from 'vitest';
-const { createOrder, addLine, listOrders, voidLine } = require('../src/validators/orders');
+const { createOrder, addLine, listOrders, voidLine, changeStatus, addNote } = require('../src/validators/orders');
 
 describe('createOrder', () => {
   it('accepts a valid table number', () => {
@@ -162,5 +162,65 @@ describe('voidLine', () => {
   it('rejects reason over 500 chars', () => {
     const { error } = voidLine.validate({ reason: 'a'.repeat(501) });
     expect(error).toBeDefined();
+  });
+});
+
+describe('changeStatus', () => {
+  it('accepts every valid status', () => {
+    const statuses = ['PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED', 'CANCELLED'];
+    for (const status of statuses) {
+      const { error } = changeStatus.validate({ status });
+      expect(error, `status: ${status}`).toBeUndefined();
+    }
+  });
+
+  it('rejects missing status', () => {
+    const { error } = changeStatus.validate({});
+    expect(error).toBeDefined();
+    expect(error.details[0].message).toMatch(/status.*required/i);
+  });
+
+  it('rejects invalid status string', () => {
+    const { error } = changeStatus.validate({ status: 'OPEN' });
+    expect(error).toBeDefined();
+    expect(error.details[0].message).toMatch(/must be one of/i);
+  });
+
+  it('rejects numeric status', () => {
+    const { error } = changeStatus.validate({ status: 1 });
+    expect(error).toBeDefined();
+  });
+});
+
+describe('addNote', () => {
+  it('accepts a valid note', () => {
+    const { error } = addNote.validate({ content: 'Customer requested extra napkins' });
+    expect(error).toBeUndefined();
+  });
+
+  it('rejects missing content', () => {
+    const { error } = addNote.validate({});
+    expect(error).toBeDefined();
+    expect(error.details[0].message).toMatch(/content.*required/i);
+  });
+
+  it('rejects empty content', () => {
+    const { error } = addNote.validate({ content: '' });
+    expect(error).toBeDefined();
+  });
+
+  it('rejects whitespace-only content', () => {
+    const { error } = addNote.validate({ content: '   ' });
+    expect(error).toBeDefined();
+  });
+
+  it('rejects content over 2000 chars', () => {
+    const { error } = addNote.validate({ content: 'a'.repeat(2001) });
+    expect(error).toBeDefined();
+  });
+
+  it('trims whitespace', () => {
+    const { value } = addNote.validate({ content: '  Hi  ' });
+    expect(value.content).toBe('Hi');
   });
 });

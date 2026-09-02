@@ -8,6 +8,19 @@ class AppError extends Error {
     this.status = status || 500;
     this.code = code || 'INTERNAL_ERROR';
     this.isOperational = true; // marks expected errors vs. bugs
+    this.details = null;
+  }
+
+  /**
+   * Attaches structured details to the error and returns the same instance.
+   * Allows chaining: `throw AppError.CONFLICT(msg).withDetails({...})`
+   *
+   * @param {object} details
+   * @returns {AppError}
+   */
+  withDetails(details) {
+    this.details = details;
+    return this;
   }
 }
 

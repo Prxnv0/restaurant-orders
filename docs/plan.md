@@ -68,19 +68,33 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 - `GET /api/orders` was also implemented in M4 scope (needed for OrdersPage) — it was listed under M6 in the original plan but is required by the M4 frontend
 - The waiter filter on GET /api/orders is implemented but only exposed to managers in the UI (M6 will surface it in the frontend filter controls)
 
-### Milestone 5 — Lifecycle, Void, History (est. 2 hours) ⏳ PENDING
+### Milestone 5 — Lifecycle, Void, History (est. 2 hours) ✅ COMPLETE
 **Requirements satisfied:**
 - **Goal 4** (full): state machine Placed→Accepted→Preparing→Ready→Served, Cancelled (only while Placed/Accepted), line Void with required reason (only while order open), rejection of illegal moves with explanatory message
 - **Goal 9** (full): timeline of every status change (old, new, actor), every line added/voided with reason, every note; immutable (no UPDATE/DELETE routes defined)
 
-**Backend scope:**
-- State machine module: `validTransitions` map; reject others with `409 INVALID_TRANSITION` + `current_status` + `attempted_status` + human message
-- `PATCH /api/orders/:id/status`: validate transition; update order; if SERVED, set `served_at`; if READY/SERVED/CANCELLED, resolve any active alert
-- `POST /api/orders/:id/lines/:lineId/void`: require non-empty `reason`; block if order is SERVED or CANCELLED; block if line is already VOID
-- `POST /api/orders/:id/notes`: append-only; no edit/delete routes
-- `GET /api/orders/:id/history`: ordered by `created_at`; returns event_type + details + actor name
-- `GET /api/orders/:id/notes`: list (read-only)
-- Decisions to record: where to encode the transition map, history JSON shape standardization
+**Delivered:**
+- Backend: `src/stateMachine.js` (new module) — `VALID_TRANSITIONS` map, `validNextStatuses`, `canTransition`, `assertValidTransition`; throws `AppError` 409 with `code: INVALID_TRANSITION` and `details: { current_status, attempted_status, valid_next_statuses, reason }` and a human-readable message
+- Backend: `src/utils/errors.js` — added `withDetails(details)` chaining helper on `AppError` so error responses can carry structured payloads
+- Backend: `src/routes/orders.js` — added 5 new endpoints:
+  - `PATCH /api/orders/:id/status` — state-machine-validated; sets `served_at` on SERVED; resolves any active alert on READY/SERVED/CANCELLED; rejects on archived orders
+  - `POST /api/orders/:id/lines/:lineId/void` — non-empty reason required; blocked when order is SERVED or CANCELLED; blocked when line is already VOID
+  - `GET /api/orders/:id/history` — timeline ordered ascending by `created_at`, includes actor name
+  - `GET /api/orders/:id/notes` — list, newest first
+  - `POST /api/orders/:id/notes` — append-only; no edit/delete routes defined
+- Backend: `validators/orders.js` — added `changeStatus` and `addNote` Joi schemas
+- Backend: `validators/index.js` — barrel updated
+- Tests: `tests/stateMachine.test.js` (40 cases — every valid transition, every illegal transition with reason-classification assertions, terminal-state checks, unknown-status checks, error-shape checks)
+- Tests: `tests/orders-validator.test.js` — added 10 cases for `changeStatus` and `addNote` (now 35 total)
+- **All 93 tests pass** (40 state machine + 35 orders validator + 18 menu validator)
+- Decisions 18 and 19 added
+
+**Notes:**
+- `voidLine` validator was already defined in M4 (used at the time by a planned `POST /lines/:lineId/void` route that was deferred to M5). The void route is implemented here.
+- The `served_at` column (Decision 12) and the `eventType` enum (Decision 13) were already in place from M1 — M5 just makes use of them.
+- The state machine encodes the *rule* in code (one constant `VALID_TRANSITIONS`) rather than scattering `if (currentStatus === ...)` checks across route handlers. All illegal moves throw the same `AppError` shape, so the error response is uniform.
+- The `AppError` 409 response now includes a `details` object so the client can present a helpful message and know which transitions are valid next. The `reason` field categorizes the violation (`cancel_too_late`, `skip_states`, `backward_transition`, `terminal_status`, `no_op`, `illegal_transition`).
+- Route-level integration tests (with a real DB) are deferred to M10. Validator + state-machine unit tests give the rule coverage the M5 spec implies.
 
 ### Milestone 6 — Collaborators + Order Search (est. 2 hours) ⏳ PENDING
 **Requirements satisfied:**
@@ -363,7 +377,7 @@ These rules exist so that a reviewer — or a future session — can recover the
 | 2. Auth + AuthZ | 2h | — | 🔄 → ✅ |
 | 3. Menu + Bulk | 2h | ~1.5h | ✅ |
 | 4. Orders + Lines | 2h | ~2h | ✅ |
-| 5. Lifecycle + History | 2h | — | ⏳ |
+| 5. Lifecycle + History | 2h | ~1.5h | ✅ |
 | 6. Collaborators + Search | 2h | — | ⏳ |
 | 7. Dashboard + Alerts + CSV | 2h | — | ⏳ |
 | 8. Frontend: Manager | 1.5h | — | ⏳ |
@@ -372,7 +386,7 @@ These rules exist so that a reviewer — or a future session — can recover the
 | 11. Deploy + Smoke | 0.5h | — | ⏳ |
 | 12. Pre-Submission Check | 0.25h | — | ⏳ |
 | 13. Docs Final | 0.25h | — | ⏳ |
-| **Total** | **~15.5h** | **~7.5h so far** | 7 milestones remain |
+| **Total** | **~15.5h** | **~9h so far** | 6 milestones remain |
 
 ---
 

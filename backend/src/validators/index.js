@@ -1,6 +1,6 @@
 // Central export of all validators.
 const { createMenuItem, updateMenuItem, bulkUpdate } = require('./menu');
-const { createOrder, addLine, listOrders, voidLine } = require('./orders');
+const { createOrder, addLine, listOrders, voidLine, changeStatus, addNote } = require('./orders');
 
 module.exports = {
   createMenuItem,
@@ -10,4 +10,6 @@ module.exports = {
   addLine,
   listOrders,
   voidLine,
+  changeStatus,
+  addNote,
 };

@@ -33,9 +33,23 @@ const voidLine = Joi.object({
   reason: Joi.string().trim().min(1).max(500).required(),
 });
 
+// ── Change order status ─────────────────────────────────────────────────
+const changeStatus = Joi.object({
+  status: Joi.string()
+    .valid('PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED', 'CANCELLED')
+    .required(),
+});
+
+// ── Add note ────────────────────────────────────────────────────────────
+const addNote = Joi.object({
+  content: Joi.string().trim().min(1).max(2000).required(),
+});
+
 module.exports = {
   createOrder,
   addLine,
   listOrders,
   voidLine,
+  changeStatus,
+  addNote,
 };
