@@ -1,25 +1,50 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import OrdersPage from './pages/OrdersPage';
 import OrderDetailPage from './pages/OrderDetailPage';
+import NewOrderPage from './pages/NewOrderPage';
 import MenuPage from './pages/MenuPage';
 import DashboardPage from './pages/DashboardPage';
 import AlertsPage from './pages/AlertsPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import './styles.css';
 
-// Milestone 2: Real router with auth protection.
-// Placeholder pages (OrdersPage, etc.) will be implemented in later milestones.
+function NavLinks() {
+  const { isAuthenticated, isManager, user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  if (!isAuthenticated) return null;
+
+  return (
+    <>
+      <nav className="nav-links">
+        <button onClick={() => navigate('/orders')}>Orders</button>
+        <button onClick={() => navigate('/orders/new')}>+ New</button>
+        {isManager && (
+          <>
+            <button onClick={() => navigate('/menu')}>Menu</button>
+            <button onClick={() => navigate('/dashboard')}>Dashboard</button>
+            <button onClick={() => navigate('/alerts')}>Alerts</button>
+          </>
+        )}
+      </nav>
+      <div className="user-info">
+        {user?.name} ({user?.role}){' '}
+        <button onClick={logout}>Logout</button>
+      </div>
+    </>
+  );
+}
+
+// Milestone 4: Real nav links, orders with new-order creation.
 export default function App() {
   return (
     <AuthProvider>
       <div className="app">
         <header className="app-header">
           <nav className="app-nav">
-            <nav className="nav-links">
-              {/* Nav links will be implemented in later milestones */}
-            </nav>
+            <NavLinks />
           </nav>
         </header>
         <main>
@@ -38,6 +63,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <OrdersPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/orders/new"
+              element={
+                <ProtectedRoute>
+                  <NewOrderPage />
                 </ProtectedRoute>
               }
             />

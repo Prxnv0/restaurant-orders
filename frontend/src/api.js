@@ -77,3 +77,39 @@ export async function updateMenuItem(id, data) {
 export async function bulkUpdateMenuItems(item_ids, data) {
   return api.post('/api/menu/bulk-update', { item_ids, ...data });
 }
+
+// Convenience order helpers
+export async function fetchOrders(query = {}) {
+  const params = new URLSearchParams();
+  if (query.search) params.set('search', query.search);
+  if (query.status) params.set('status', query.status);
+  if (query.waiter) params.set('waiter', query.waiter);
+  if (query.date) params.set('date', query.date);
+  if (query.sort) params.set('sort', query.sort);
+  if (query.order) params.set('order', query.order);
+  if (query.page) params.set('page', query.page);
+  if (query.limit) params.set('limit', query.limit);
+  if (query.include_archived) params.set('include_archived', 'true');
+  const qs = params.toString();
+  return api.get(`/api/orders${qs ? '?' + qs : ''}`);
+}
+
+export async function fetchOrder(id) {
+  return api.get(`/api/orders/${id}`);
+}
+
+export async function createOrder(data) {
+  return api.post('/api/orders', data);
+}
+
+export async function addOrderLine(orderId, data) {
+  return api.post(`/api/orders/${orderId}/lines`, data);
+}
+
+export async function archiveOrder(orderId) {
+  return api.post(`/api/orders/${orderId}/archive`);
+}
+
+export async function restoreOrder(orderId) {
+  return api.post(`/api/orders/${orderId}/restore`);
+}

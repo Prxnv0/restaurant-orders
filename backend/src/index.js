@@ -27,9 +27,9 @@ app.get('/api/health', (_req, res) => {
 // ── Mount routes ────────────────────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/menu', require('./routes/menu'));
+app.use('/api/orders', require('./routes/orders'));
 
 // TODO: mount remaining routes in subsequent milestones
-// app.use('/api/orders', require('./routes/orders'));
 // app.use('/api/alerts', require('./routes/alerts'));
 // app.use('/api/dashboard', require('./routes/dashboard'));
 // app.use('/api/export', require('./routes/export'));

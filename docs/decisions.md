@@ -119,6 +119,20 @@ Additional decisions will be recorded here as the project develops. Examples tha
 - **Why the trade-off is acceptable:** A take-home with one application server and no other write paths cannot reach the database except through Joi-validated controllers. The defence-in-depth value of a DB CHECK would be in catching direct SQL writes from migrations, ad-hoc psql sessions, or a future second service — none of which exist in this 12-hour build. Adding a raw SQL migration would also create a second source of truth (Prisma schema + raw migration) that has to stay in sync.
 - **Cost of the original choice:** Zero user-facing impact (the invalid attributes never compiled), but it would have been a deploy blocker. Found and fixed during M3 because `prisma generate` is required to run the backend.
 
+## Decision 16 — Total computed from `ACTIVE` lines only (M4)
+
+- **Chose:** The order total returned to clients is computed server-side as `SUM(quantity * unit_price)` over rows where `status = 'ACTIVE'`. Voided lines are excluded from the displayed total. The query runs against the `order_lines` table directly (not against any cached value on the `Order` model).
+- **Rejected:** Caching the total on the `Order` model as a column updated by a trigger, computing the total in JavaScript after loading all lines, returning the raw line rows and letting the client sum.
+- **Why:** A cached column requires a trigger to stay in sync and creates two sources of truth (the column and the sum of the lines). A frontend-computed total means the server never returns a single canonical number, which contradicts the README requirement that totals be calculated server-side. Computing at query time is one extra `SUM` against a tiny table (single-digit to low-double-digit rows per order); the cost is negligible and the data is always current.
+- **What users see:** The total on the order detail page reflects only active lines. A line voided with a reason disappears from the total immediately on the next fetch.
+
+## Decision 17 — Line-add blocking rule (M4)
+
+- **Chose:** The `POST /api/orders/:id/lines` endpoint refuses (HTTP 409) to add a line when the order is in `SERVED` or `CANCELLED` status. No other statuses block the add — including `PLACED`, `ACCEPTED`, `PREPARING`, and `READY`. The error message includes the current status so the caller can present a helpful message.
+- **Rejected:** Allowing line adds in any status (including post-serve, requiring a manual override), or only allowing line adds in `PLACED` (locking the door too early — the kitchen may accept a new side dish after the order is already preparing).
+- **Why:** The README is explicit that lines can be added until the order is "Served or cancelled" — that's the natural end of an order's life. The status model treats `READY` as still a state where the order is open and could plausibly receive a last-minute addition (e.g., "and a coffee too"). The error code 409 (Conflict) is the right HTTP code because the request is well-formed but conflicts with the current resource state.
+- **What users see:** On a served or cancelled order, the "Add Line" form on the order detail page is hidden, and any direct API call receives a 409 with a message naming the blocking status.
+
 ---
 
 *Decisions continue below as implementation progresses.*

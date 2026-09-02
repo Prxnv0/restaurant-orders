@@ -47,16 +47,26 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 **Notes:**
 - Database-touching integration tests for menu routes are deferred to M10 ("Critical Automated Tests"), where the full Supertest + test-database harness is set up. M3 ships validator-level coverage only.
 
-### Milestone 4 — Orders + Order Lines (est. 2 hours) ⏳ PENDING
+### Milestone 4 — Orders + Order Lines (est. 2 hours) ✅ COMPLETE
 **Requirements satisfied:**
 - **Goal 2** (full): create orders, table number, primary waiter, archive/restore, default queue excludes archived
 - **Goal 3** (full): order lines with menu item + quantity + special instructions; price snapshot at time of add; total computed by server
 
-**Backend scope:**
-- `routes/orders.js`: POST /api/orders (create with `table_number`; primary_waiter_id = req.user.id; status = PLACED; history entry), GET /api/orders/:id (order + lines + computed total), POST /api/orders/:id/lines (read current menu price, snapshot to `unit_price`), POST /api/orders/:id/archive, POST /api/orders/:id/restore
-- Line-add must be blocked once order is SERVED or CANCELLED
-- Total computed server-side as SUM(quantity * unit_price) over ACTIVE lines only
-- Decisions to record: total computation strategy, line-add timing rule
+**Delivered:**
+- Backend: `routes/orders.js` with 6 endpoints (POST /api/orders, GET /api/orders, GET /api/orders/:id, POST /api/orders/:id/lines, POST /api/orders/:id/archive, POST /api/orders/:id/restore)
+- Backend: `validators/orders.js` with four Joi schemas (`createOrder`, `addLine`, `listOrders`, `voidLine`); validator barrel updated
+- Backend: `tests/orders-validator.test.js` (25 test cases covering happy path + every rejection rule)
+- Frontend: `api.js` order helpers (`fetchOrders`, `fetchOrder`, `createOrder`, `addOrderLine`, `archiveOrder`, `restoreOrder`)
+- Frontend: `NewOrderPage.jsx` (create-order form with table number)
+- Frontend: `OrdersPage.jsx` (orders list with search/filter/pagination, new-order button)
+- Frontend: `OrderDetailPage.jsx` (order detail with lines table, running total, add-line form)
+- Frontend: `App.jsx` updated (nav links with role-based menu items, logout button, /orders/new route)
+- Frontend: `styles.css` updated with status badge styles
+- Decisions 16 (total computation strategy) and 17 (line-add blocking rule) added
+
+**Notes:**
+- `GET /api/orders` was also implemented in M4 scope (needed for OrdersPage) — it was listed under M6 in the original plan but is required by the M4 frontend
+- The waiter filter on GET /api/orders is implemented but only exposed to managers in the UI (M6 will surface it in the frontend filter controls)
 
 ### Milestone 5 — Lifecycle, Void, History (est. 2 hours) ⏳ PENDING
 **Requirements satisfied:**
@@ -281,7 +291,7 @@ Documentation is updated **as the work happens**, not from memory at the end:
 | 1. Foundation + Database | 2h | ~2h | ✅ |
 | 2. Auth + AuthZ | 2h | — | 🔄 → ✅ |
 | 3. Menu + Bulk | 2h | ~1.5h | ✅ |
-| 4. Orders + Lines | 2h | — | ⏳ |
+| 4. Orders + Lines | 2h | ~2h | ✅ |
 | 5. Lifecycle + History | 2h | — | ⏳ |
 | 6. Collaborators + Search | 2h | — | ⏳ |
 | 7. Dashboard + Alerts + CSV | 2h | — | ⏳ |
@@ -291,7 +301,7 @@ Documentation is updated **as the work happens**, not from memory at the end:
 | 11. Deploy + Smoke | 0.5h | — | ⏳ |
 | 12. Pre-Submission Check | 0.25h | — | ⏳ |
 | 13. Docs Final | 0.25h | — | ⏳ |
-| **Total** | **~15.5h** | **~5.5h so far** | 8 milestones remain |
+| **Total** | **~15.5h** | **~7.5h so far** | 7 milestones remain |
 
 ---
 

@@ -58,5 +58,24 @@ th { background: #f0f0f1; font-weight: 600; }
 .nav-links { display: flex; gap: 16px; }
 .nav-links a { color: white; text-decoration: none; font-weight: 400; font-size: 14px; }
 .nav-links a:hover { text-decoration: underline; }
+.nav-links button { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.4); padding: 4px 10px; }
+.nav-links button:hover { background: rgba(255,255,255,0.1); }
 .user-info { font-size: 13px; opacity: 0.9; }
 .user-info button { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.4); padding: 4px 10px; }
+
+/* Status badge for orders (M4) */
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.status-placed { background: #dbeafe; color: #1e40af; }
+.status-accepted { background: #ddd6fe; color: #5b21b6; }
+.status-preparing { background: #fef3c7; color: #92400e; }
+.status-ready { background: #d1fae5; color: #065f46; }
+.status-served { background: #e5e7eb; color: #374151; }
+.status-cancelled { background: #fee2e2; color: #991b1b; }
