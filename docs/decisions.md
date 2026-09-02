@@ -180,3 +180,27 @@ Additional decisions will be recorded here as the project develops. Examples tha
 ---
 
 *Decisions continue below as implementation progresses.*
+
+## Decision 23 — "Today" defined in local timezone, not UTC (M7)
+
+- **Chose:** Dashboard and CSV export determine "today" by converting `new Date()` to `APP_TIMEZONE` (IANA name, e.g. `Asia/Kolkata`), defaulting to `UTC`.
+- **Rejected:** Using UTC midnight as the boundary (would cause midnight misalignment for restaurants in timezones with a positive UTC offset — orders placed at 00:05 local on a +5:30 restaurant would appear on the wrong day in the dashboard and CSV).
+- **Why:** A restaurant's day is defined by their local clock, not by UTC. The `APP_TIMEZONE` env var keeps this deployment-specific without hard-coding any specific offset. The offset is computed once per request via `toLocaleString` (cheap and accurate for the IANA zone database).
+- **What users see:** Dashboard revenue and order counts match the restaurant's actual working day. The CSV export is named for the local date. This is especially important for restaurants that operate past midnight — an order placed at 00:30 on a Monday belongs to Monday, not Sunday.
+- **What this cost:** `toLocaleString('en-US', { timeZone: tz })` has a small runtime overhead per request; acceptable for dashboard (not a hot path) and CSV (one-off export). If it became a bottleneck, the offset could be cached as a numeric `±hhmm` string.
+
+## Decision 24 — Alert reappearance logic: last dismissal timestamp only (M7)
+
+- **Chose:** An alert is "active" when `resolvedAt IS NULL` AND `order.status` is non-terminal AND (there are no `alert_dismissals` for this alert OR `MAX(dismissed_at) < now - threshold`). The alert is suppressed while a dismissal is recent enough; it reappears as soon as threshold-minutes have elapsed since that dismissal.
+- **Rejected:** Using the order's `updatedAt` or `createdAt` as the reappearance clock — this would be wrong because the order is updated on every status change, collaborator add, line add, etc., which would restart the clock unexpectedly.
+- **Why:** The dismissal table's `dismissedAt` is the right clock because it is set once, never updated, and correctly measures "time since last explicit user action". A dismissal that happened 10 minutes ago is no longer recent; after 15 minutes the alert should reappear. The `MAX(dismissed_at)` aggregate (implemented in the route as `alert.dismissals[0].dismissedAt` — we always fetch the most-recent dismissal first) gives exactly that.
+- **What users see:** A waiter dismisses an alert; it disappears from the alerts list. If the order is still not Ready/Served after 15 more minutes, the alert reappears — the same alert record still exists, and the query re-exposes it. The count in the nav badge reflects the reappeared alert.
+- **What this cost:** None — the query already fetches `dismissals` ordered by `dismissedAt DESC LIMIT 1` for the `last_dismissed_at` response field; the same check is reused for the visibility filter.
+
+## Decision 25 — CSV: one row per line, order total on first line only (M7)
+
+- **Chose:** The CSV exports one row per `order_lines` row. The order total (sum of ACTIVE lines) appears in the `Order Total` column on the first line of each order and is blank on subsequent lines. Voided lines are included with `Voided=Yes` and `Line Total=0`; the order total excludes them. If an order has no lines, a single summary row is emitted.
+- **Rejected:** One row per order with a denormalised total column (would require joining all lines into one cell and then splitting on import), or outputting per-line totals only without a per-order total (would make it harder to reconcile the CSV against the POS).
+- **Why:** A spreadsheet with one row per line is the most natural representation of a restaurant bill in tabular form — each row is one item. The order total on the first row is a standard spreadsheet convention that makes the bill readable without a separate aggregate. Including voided lines with a clear `Voided` flag gives a full audit trail.
+- **What users see:** The manager downloads `orders-2026-09-03.csv` and opens it in Excel. Each line is a row, the order total is in column O (visible on the first line), voided items are flagged. The file opens correctly in Excel, LibreOffice, and Google Sheets.
+- **What this cost:** None — this is the simplest representation that matches how order-line data is stored.

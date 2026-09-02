@@ -145,3 +145,24 @@ export async function addCollaborator(orderId, waiter_id) {
 export async function removeCollaborator(orderId, waiterId) {
   return api.delete(`/api/orders/${orderId}/collaborators/${waiterId}`);
 }
+
+// Dashboard helper (manager only) — returns headline metrics, breakdowns, 14-day chart.
+export async function fetchDashboard() {
+  return api.get('/api/dashboard');
+}
+
+// Alert helpers
+// fetchAlerts returns { alerts, count }. count is intended for the nav badge.
+export async function fetchAlerts() {
+  return api.get('/api/alerts');
+}
+
+export async function dismissAlert(alertId) {
+  return api.post(`/api/alerts/${alertId}/dismiss`);
+}
+
+// CSV export — returns the raw text. The browser turns this into a download
+// via Content-Disposition.
+export async function fetchTodaysOrdersCsv() {
+  return api.get('/api/export/orders/today');
+}

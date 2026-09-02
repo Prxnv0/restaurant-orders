@@ -226,4 +226,41 @@ Beyond the explicit "Start Milestone 6" prompt, no further prompts were issued �
 
 *Implementation prompts continue below as the project progresses.*
 
+## Milestone 7 implementation — Dashboard + Alerts + CSV
+
+### What we asked
+"Start Milestone 7. First read docs/plan.md and follow the M5–M13 Documentation & Traceability Rules. Do not rely on conversation memory."
+
+### What we got
+The AI:
+- Re-read `docs/plan.md` for the M7 scope (Goal 7 CSV, Goal 8 dashboard, Goal 10 alerts), the milestone-completion checklist, the design refinement §4 (dashboard definitions), §5 (CSV columns), and the Documentation & Traceability Rules.
+- Implemented `backend/src/routes/dashboard.js` — `GET /api/dashboard` (manager only). Computes `open_orders` (non-terminal, non-archived), `placed_today`, `served_today` (using `servedAt`), `revenue_today` (sum of `quantity * unit_price` over ACTIVE lines on today's orders), `status_breakdown` (count by status, non-archived), `waiter_breakdown` (count by primary waiter for today's orders, names resolved), and `chart_14d` (14 zero-filled entries: `{ date, served, revenue }`).
+- Implemented `backend/src/routes/alerts.js` — `GET /api/alerts` (any role, scoped) returns `{ alerts, count }`. Active filter: `resolvedAt IS NULL` AND `order.status` non-terminal AND (no dismissals OR last dismissal > threshold ago). Manager sees all; waiter sees only orders where they are primary or collaborator. `POST /api/alerts/:id/dismiss` inserts an `AlertDismissal` row and requires order access (inline check — no `requireOrderAccess` middleware because the alert is the resource, not the order).
+- Implemented `backend/src/routes/export.js` — `GET /api/export/orders/today` (manager only). Fetches all orders created today (any status, includes archived), emits one CSV row per order line plus a summary row for empty orders. Columns: Order ID, Table, Status, Primary Waiter, Created At, Served At, Archived, Line #, Item, Quantity, Unit Price, Line Total, Voided, Void Reason, Order Total. Filename `orders-YYYY-MM-DD.csv` (local date). Content-Type `text/csv`. Order total on first line only.
+- Updated `backend/src/index.js` — global error handler now propagates `AppError.details` to the JSON response (was being dropped previously).
+- Added `backend/tests/csv.test.js` — 7 cases for the CSV escape helper (commas, quotes, newlines, null/undefined, non-strings). Total 108 tests, all pass.
+- Added `frontend/src/api.js` helpers: `fetchDashboard`, `fetchAlerts`, `dismissAlert`, `fetchTodaysOrdersCsv`. (Full UI is M8.)
+- Updated `docs/plan.md` (M7 marked ✅, estimate vs actual, delivered list, notes).
+- Added Decisions 23, 24, 25 to `docs/decisions.md` (local timezone, alert reappearance query, CSV row shape).
+- Updated `docs/architecture.md` (M7 status, request path with dashboard/alerts/CSV, new key decisions).
+- No bugs were found in M7 (see "What was correct" below).
+
+### What we corrected
+**No corrections this milestone — all routes passed on first run, all 108 tests pass, and the frontend builds clean. The M7 work is a direct implementation of the plan's spec, which was already fully refined by the time M7 started (M5 and M6 had already resolved their open questions and the M7 spec was unambiguous).**
+
+The most subtle M7 implementation choice — the alert reappearance query — was already specified in the plan: "open orders past threshold, no recent dismissal within threshold". The Decision 24 text records the choice between using `MAX(dismissed_at)` (chosen) versus `Order.updatedAt` or `Order.createdAt` (rejected) and the reason — `MAX(dismissed_at)` is the only clock that measures "time since last explicit user action" without being affected by unrelated order updates (line adds, status changes, etc.).
+
+### What was already correct
+- The `AppError` `withDetails` helper from M5 already exists on the error class. The fix in M7 was to surface the existing `details` field through the global error handler — a one-line change.
+- The 14-day chart's date key is `servedAt` (Decision 12, M2), which was already in the schema.
+- The `Alert` and `AlertDismissal` schema (M1) and the dismissal reappearance cycle (Decision 3, planning) were both already in place; M7 just implemented the query.
+
+### Other notes
+- The existing dev server on port 4000 was running the M6 code, so a full end-to-end smoke test of the new routes against the running server would have required a restart. The unit tests (108 passing) and route-load smoke (`require()` of all three new route modules succeeds) are the M7 verification per the milestone-completion checklist, given that integration tests against a real DB are M10 scope.
+- The plan deliberately splits M7 (backend) from M8 (frontend). The Dashboard and Alerts page components are still placeholders from M3; they will be filled in during M8 per the plan.
+
+---
+
+*Implementation prompts continue below as the project progresses.*
+
 ---

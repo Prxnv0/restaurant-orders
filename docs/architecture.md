@@ -73,6 +73,10 @@ The following are explicitly out of scope for this submission:
 - **Database-backed authorization matrix:** The actual access-control rules are expressed in the authorization matrix (see docs/decisions.md) and enforced in Express middleware, not hidden in the frontend.
 - **State machine as a dedicated module:** All legal order status transitions are encoded in a single `VALID_TRANSITIONS` map in `backend/src/stateMachine.js`. Every endpoint that changes order status calls `assertValidTransition(from, to)`, which throws a uniform `AppError 409` with `code: INVALID_TRANSITION` on illegal moves. The `reason` field categorises the violation (`cancel_too_late`, `skip_states`, `backward_transition`, `terminal_status`, `no_op`). This keeps the rule auditable in one place and testable in isolation from the routes.
 - **Standardised history details JSONB shape:** Each `order_history_entries.details` JSONB uses a consistent per-event-type shape (see Decision 19). The timeline renderer dispatches on `event_type` and reads known fields from the details object.
+- **Dashboard as server-computed JSON, not a client-side view of raw data (M7):** The `GET /api/dashboard` route computes every metric in a single response — open orders, placed/served/revenue today, status/waiter breakdowns, and a 14-day zero-filled chart. The client does no aggregation; the response IS the dashboard. This keeps the client thin and lets the server apply the same timezone / threshold rules that the rest of the system uses.
+- **Alert reappearance as a query, not a job (M7):** Alerts do not require a background worker or cron to reappear. The `GET /api/alerts` route queries `MAX(dismissed_at) < now - threshold` at request time, so an alert that was dismissed 15 minutes ago naturally reappears on the next poll. The 15-minute timer is the only state — and it lives in the `alert_dismissals` rows.
+- **CSV as an Express response, not a stream (M7):** The export route builds the CSV in memory and returns it as a single response. For a single restaurant's daily order volume (low hundreds of rows at most) this is well under 100 KB and the response time is sub-millisecond. A streaming response would be needed at much higher volume.
+- **AppError `details` propagated to the JSON response (M7):** The global error handler now includes `err.details` in the JSON body when present. This lets the state-machine error response (M5) carry `current_status`, `attempted_status`, `valid_next_statuses`, and `reason` so the client can present a helpful message and render only the legal next-status buttons.
 
 ---
 
@@ -89,8 +93,8 @@ The following are explicitly out of scope for this submission:
 
 | Component | Runtime Location | Status |
 |-----------|-----------------|--------|
-| React frontend | Browser (Vercel-hosted static + dynamic) | Implemented: auth (M2), orders + detail (M4), menu CRUD (M3), lifecycle + history (M5), collaborators + search (M6) |
-| Express backend | Render (Node.js process) | Implemented: auth (M2), menu CRUD (M3), orders + lines (M4), lifecycle + history (M5), collaborators + search (M6) |
+| React frontend | Browser (Vercel-hosted static + dynamic) | Implemented: auth (M2), orders + detail (M4), menu CRUD (M3), lifecycle + history (M5), collaborators + search (M6), dashboard + alerts API helpers (M7); dashboard and alerts UI in M8 |
+| Express backend | Render (Node.js process) | Implemented: auth (M2), menu CRUD (M3), orders + lines (M4), lifecycle + history (M5), collaborators + search (M6), dashboard + alerts + CSV (M7) |
 | PostgreSQL | Supabase (managed PostgreSQL) | Implemented (schema + seed) |
 | Prisma migrations | Run during backend setup, applied to Supabase | Implemented (migrations pending) |
 
@@ -116,6 +120,12 @@ The following are explicitly out of scope for this submission:
 
 9. **List orders:** The collaborator (or primary waiter) opens the orders page. The browser GETs `/api/orders`. The backend's role-based scoping returns orders where `primaryWaiterId = currentUserId OR collaborators contains currentUserId`. Waiters cannot see other waiters' orders. The list supports `search` (table number ILIKE), `status`, `date`, `waiter` filters (manager only), sort, and pagination. All filtering and sorting is done server-side; the response includes `{ orders, total }` for the pagination UI.
 
+10. **Dashboard:** A manager opens the dashboard. The browser GETs `/api/dashboard` (manager-only). The backend computes: open orders count (non-terminal, non-archived), placed today, served today, revenue today (ACTIVE lines only, orders created today). Status breakdown groups non-archived orders by status. Waiter breakdown groups orders created today by primary waiter (names resolved). The 14-day chart is zero-filled — every date in the range appears, even if zero orders were served that day. All "today" computations use the local timezone (`APP_TIMEZONE` env var, default UTC).
+
+11. **Alerts:** The browser polls `GET /api/alerts`. An alert is active when: the order is not terminal (READY/SERVED/CANCELLED — alerts are deleted there) AND the order is past the slow-order threshold (default 15 minutes) since it was last dismissed (or never dismissed). The threshold check is `MAX(dismissed_at) < now - threshold_ms`. Managers see all alerts; waiters see only alerts for their orders. The response includes `age_minutes` (minutes since order was placed) and `last_dismissed_at` for UI display. A waiter dismisses an alert: the browser POSTs `/api/alerts/:id/dismiss`. The route inserts a new `AlertDismissal` row and requires order access (primary / collaborator / manager). The alert disappears; it reappears automatically after the threshold period if the order is still open.
+
+12. **CSV export:** A manager downloads today's orders. The browser GETs `/api/export/orders/today`. The backend fetches all orders created today (any status, includes archived), expands to one CSV row per order line, and computes the order total from ACTIVE lines only. The response is `Content-Type: text/csv` with `Content-Disposition: attachment; filename="orders-YYYY-MM-DD.csv"`. Voided lines are included with `Voided=Yes` and `Line Total=0`; the order total (on the first line of each order) excludes them.
+
 ---
 
 ## What Was Deliberately Not Built (revised)
@@ -134,4 +144,4 @@ The following are explicitly out of scope for this submission:
 - Server-side rendering (client-side is sufficient)
 - Mobile native app (responsive web is minimum)
 - UI animations and transitions
-- Charting library for dashboard (will use plain text until time permits)
+- Charting library for dashboard (M7): the 14-day chart is rendered as a labeled HTML `<table>` with date / served / revenue columns. A charting library (Chart.js, Recharts) would add bundle size and styling complexity; a table is the cheapest sufficient representation and is the documented plan choice.

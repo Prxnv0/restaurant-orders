@@ -119,18 +119,27 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 - `include_archived` defaults to `false`; the archive/restore toggle is available via the order detail page, not on the list.
 - History timeline and notes panel UI are in M9 scope (not added here).
 
-### Milestone 7 — Dashboard + Alerts + CSV (est. 2 hours) ⏳ PENDING
+### Milestone 7 — Dashboard + Alerts + CSV (est. 2 hours) ✅ COMPLETE
 **Requirements satisfied:**
 - **Goal 7** (CSV): export today's orders with lines, total, status
 - **Goal 8** (full): headline numbers (open orders, placed today, served today, revenue today), status breakdown, waiter breakdown, 14-day orders-served chart
 - **Goal 10** (full): slow-order alerts (threshold-based), appear in alerts area, dismissable, reappear after further threshold period, count in nav
 
-**Backend scope:**
-- `GET /api/dashboard` (manager only): returns `{ open_orders, placed_today, served_today, revenue_today, status_breakdown, waiter_breakdown, chart_14d }` with definitions as in design refinement §4. Revenue counts ACTIVE lines only. Chart is per-day served count + revenue with zero-fill.
-- `GET /api/alerts`: returns active alerts (open orders past threshold, no recent dismissal within threshold); manager sees all, waiter sees their orders; includes `count` for nav badge
-- `POST /api/alerts/:id/dismiss`: insert `AlertDismissal` row; require order access
-- `GET /api/export/orders/today` (manager only): CSV of orders created today (any status, includes archived), one row per order line, columns defined in design refinement §5, filename `orders-YYYY-MM-DD.csv`, `Content-Type: text/csv`
-- Decisions to record: alert reappearance query shape, CSV column final list
+**Delivered:**
+- Backend: `backend/src/routes/dashboard.js` — `GET /api/dashboard` (manager only). Returns `{ open_orders, placed_today, served_today, revenue_today, status_breakdown, waiter_breakdown, chart_14d }`. Revenue today aggregates `quantity * unit_price` over ACTIVE lines on orders created today. Status breakdown: count by status (all non-archived). Waiter breakdown: count by primary waiter, orders created today, names resolved. Chart: 14 entries, zero-filled, keyed on `servedAt`.
+- Backend: `backend/src/routes/alerts.js` — `GET /api/alerts` (any role, scoped), `POST /api/alerts/:id/dismiss` (order-access check inline). Active alert = `resolvedAt IS NULL` AND order in non-terminal status AND (no dismissals OR last dismissal > threshold ago). Manager sees all; waiter sees only orders where they are primary or collaborator. Response shape: `{ alerts: [{ id, order_id, table_number, status, triggered_at, age_minutes, last_dismissed_at }], count }`.
+- Backend: `backend/src/routes/export.js` — `GET /api/export/orders/today` (manager only). Fetches all orders created today (any status, includes archived), emits one CSV row per order line plus a summary row if no lines. Columns: `Order ID, Table, Status, Primary Waiter, Created At, Served At, Archived, Line #, Item, Quantity, Unit Price, Line Total, Voided, Void Reason, Order Total`. Order total repeats on the first line of each order. Voided lines have `Voided=Yes`, `Line Total=0`, and the order total excludes them. Filename `orders-YYYY-MM-DD.csv` (local date). Content-Type `text/csv`.
+- Backend: `backend/src/index.js` — global error handler now propagates `AppError.details` to the JSON response (was being dropped previously; needed for structured error payloads like the state-machine `details` object from M5).
+- Backend: `backend/tests/csv.test.js` — 7 cases for the CSV escape helper (commas, quotes, newlines, null, undefined, non-strings). Total 108 tests, all pass.
+- Frontend: `frontend/src/api.js` — added `fetchDashboard`, `fetchAlerts`, `dismissAlert`, `fetchTodaysOrdersCsv`. (The full dashboard / alerts / CSV UI surfaces are in M8 per the plan.)
+- Decisions 23, 24, 25 added.
+
+**Notes:**
+- "Today" is defined in the local timezone (`APP_TIMEZONE` env var, default `UTC`) so the "served today" / "revenue today" / CSV export match the restaurant's calendar day, not UTC midnight. This is the same pattern used by Supabase and any server that has to think about business days.
+- The 14-day chart uses `servedAt` (Decision 12, M2) as the canonical date key, not the day-of-status-change. An order served at 11:55pm on day 0 and one served at 12:05am on day 1 land on different days — the chart's date axis is the date the order actually closed.
+- The CSV includes one row per line plus a single order-total cell on the first line of each order (blank on subsequent lines) to keep the spreadsheet readable.
+- The M5 state-machine `details` object is now visible to clients (the error handler was previously dropping it). This is a useful improvement that came out of M7 review of the AppError chain — it does not change any M5 behaviour, just exposes what M5 was already putting on the error.
+- The full Dashboard / Alerts / CSV UI surfaces are deferred to M8 (manager views) per the plan. The placeholder pages already exist at `DashboardPage.jsx` and `AlertsPage.jsx` and are unchanged.
 
 ### Milestone 8 — Frontend: Manager Views (est. 1.5 hours) ⏳ PENDING
 **Requirements satisfied:**
@@ -391,14 +400,14 @@ These rules exist so that a reviewer — or a future session — can recover the
 | 4. Orders + Lines | 2h | ~2h | ✅ |
 | 5. Lifecycle + History | 2h | ~1.5h | ✅ |
 | 6. Collaborators + Search | 2h | ~1.5h | ✅ |
-| 7. Dashboard + Alerts + CSV | 2h | — | ⏳ |
+| 7. Dashboard + Alerts + CSV | 2h | ~1h | ✅ |
 | 8. Frontend: Manager | 1.5h | — | ⏳ |
 | 9. Frontend: Waiter | 1.5h | — | ⏳ |
 | 10. Critical Tests | 1h | — | ⏳ |
 | 11. Deploy + Smoke | 0.5h | — | ⏳ |
 | 12. Pre-Submission Check | 0.25h | — | ⏳ |
 | 13. Docs Final | 0.25h | — | ⏳ |
-| **Total** | **~15.5h** | **~10.5h so far** | 5 milestones remain |
+| **Total** | **~15.5h** | **~11.5h so far** | 4 milestones remain |
 
 ---
 

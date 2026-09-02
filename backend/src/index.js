@@ -29,16 +29,17 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/menu', require('./routes/menu'));
 app.use('/api/orders', require('./routes/orders'));
 
-// TODO: mount remaining routes in subsequent milestones
-// app.use('/api/alerts', require('./routes/alerts'));
-// app.use('/api/dashboard', require('./routes/dashboard'));
-// app.use('/api/export', require('./routes/export'));
+app.use('/api/alerts', require('./routes/alerts'));
+app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/export', require('./routes/export'));
 
 // Global error handler — catches AppError thrown by route handlers
 const AppError = require('./utils/errors');
 app.use((err, _req, res, _next) => {
   if (err instanceof AppError) {
-    return res.status(err.status).json({ error: err.code, message: err.message });
+    const body = { error: err.code, message: err.message };
+    if (err.details) body.details = err.details;
+    return res.status(err.status).json(body);
   }
   console.error('Unhandled error:', err);
   res.status(500).json({
