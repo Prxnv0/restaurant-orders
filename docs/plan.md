@@ -11,7 +11,7 @@ Answer each of these, in your own words.
 
 ## Session Breakdown (Actual)
 
-The work is divided into 13 milestones, each scoped to a coherent set of requirements and tracked here as they are completed. Milestones 1 and 2 are complete. Milestone 3 is next.
+The work is divided into 13 milestones, each scoped to a coherent set of requirements and tracked here as they are completed. Milestones 1–8 are complete. Milestone 9 is next.
 
 ### Milestone 1 — Foundation + Database ✅ COMPLETE
 **Requirements satisfied:** All 10 goals depend on the schema; this milestone establishes the data model and project skeleton that every feature builds on.
@@ -141,21 +141,28 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 - The M5 state-machine `details` object is now visible to clients (the error handler was previously dropping it). This is a useful improvement that came out of M7 review of the AppError chain — it does not change any M5 behaviour, just exposes what M5 was already putting on the error.
 - The full Dashboard / Alerts / CSV UI surfaces are deferred to M8 (manager views) per the plan. The placeholder pages already exist at `DashboardPage.jsx` and `AlertsPage.jsx` and are unchanged.
 
-### Milestone 8 — Frontend: Manager Views (est. 1.5 hours) ⏳ PENDING
+### Milestone 8 — Frontend: Manager Views (est. 1.5 hours) ✅ COMPLETE
 **Requirements satisfied:**
 - **Goal 1** (UI): menu management is visible only to managers
-- **Goal 7** (UI): manager menu page with multi-select UI for bulk updates (checkboxes + apply-price/apply-availability)
+- **Goal 7** (UI): manager menu page with multi-select UI for bulk updates (checkboxes + apply-price/apply-availability) — already in place from M3; verified role-scoped rendering
 - **Goal 8** (UI): dashboard rendering headline numbers, status/waiter breakdowns, 14-day chart
 - **Goal 10** (UI): alerts page with active alerts list + dismiss button + nav badge with count
 - **Goal 7** (UI): CSV download button
 
-**Frontend scope:**
-- `MenuPage`: list, add, edit, archive; multi-select with two bulk actions (set price, set availability) showing per-item success/reject
-- `DashboardPage`: render all dashboard JSON fields. 14-day chart rendered as a labeled table (no charting library — see design decision recorded in M7)
-- `AlertsPage`: list of active alerts with order id, table, age in minutes, dismiss button
-- Top-nav: show "Dashboard", "Menu", "Alerts", "Orders" links for managers; nav badge shows alert count
-- **For managers, the default landing view (`/`) redirects to `/dashboard`** (per README Goal 8 "A landing view")
-- Decisions to record: bulk-update UI shape, manager landing route
+**Delivered:**
+- `frontend/src/pages/DashboardPage.jsx` — full dashboard rendering: headline metric tiles (open orders, placed today, served today, revenue today), status breakdown table, waiter breakdown table, 14-day orders-served table (zero-filled, no charting library per design decision), CSV download button with blob-based file download
+- `frontend/src/pages/AlertsPage.jsx` — active alerts list with order id, table number, status badge, age in minutes, triggered timestamp; dismiss button with optimistic UI update; per-alert dismiss-in-progress state
+- `frontend/src/App.jsx` — default landing route (`/`) redirects managers to `/dashboard` and waiters to `/orders`; nav badge on Alerts button fetches count from `GET /api/alerts` and refreshes every 30 seconds
+- `frontend/src/styles.css` — added `.nav-badge`, `.metric-tile`, `.metric-value`, `.metric-label` styles
+- `frontend/src/api.js` — already had `fetchDashboard`, `fetchAlerts`, `dismissAlert`, `fetchTodaysOrdersCsv` helpers from M7
+- `frontend/src/pages/MenuPage.jsx` — verified unchanged; manager-only UI (add/edit/archive, multi-select bulk update with per-item success/reject) already in place from M3
+- Decisions 26 (manager landing route) and 27 (dashboard 14-day chart as labeled table) recorded
+
+**Notes:**
+- The nav badge fetches alert count via `GET /api/alerts` and refreshes every 30 seconds; failures are silently ignored so the badge degrades gracefully
+- CSV download uses `Content-Disposition` from the backend (filename embedded in response) but the frontend also sets a local filename `orders-YYYY-MM-DD.csv` for the browser save dialog
+- All manager-only routes use `ProtectedRoute` with `allowedRoles={['MANAGER']}` — waiters get redirected to `/orders` if they navigate directly
+- MenuPage already had full manager UI from M3; M8 simply verified the role-gating works end-to-end
 
 ### Milestone 9 — Frontend: Waiter Views (est. 1.5 hours) ⏳ PENDING
 **Requirements satisfied:**
@@ -401,13 +408,13 @@ These rules exist so that a reviewer — or a future session — can recover the
 | 5. Lifecycle + History | 2h | ~1.5h | ✅ |
 | 6. Collaborators + Search | 2h | ~1.5h | ✅ |
 | 7. Dashboard + Alerts + CSV | 2h | ~1h | ✅ |
-| 8. Frontend: Manager | 1.5h | — | ⏳ |
+| 8. Frontend: Manager | 1.5h | ~1h | ✅ |
 | 9. Frontend: Waiter | 1.5h | — | ⏳ |
 | 10. Critical Tests | 1h | — | ⏳ |
 | 11. Deploy + Smoke | 0.5h | — | ⏳ |
 | 12. Pre-Submission Check | 0.25h | — | ⏳ |
 | 13. Docs Final | 0.25h | — | ⏳ |
-| **Total** | **~15.5h** | **~11.5h so far** | 4 milestones remain |
+| **Total** | **~15.5h** | **~12.5h so far** | 3 milestones remain |
 
 ---
 

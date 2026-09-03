@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import OrdersPage from './pages/OrdersPage';
@@ -8,11 +9,28 @@ import MenuPage from './pages/MenuPage';
 import DashboardPage from './pages/DashboardPage';
 import AlertsPage from './pages/AlertsPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { fetchAlerts } from './api';
 import './styles.css';
 
 function NavLinks() {
   const { isAuthenticated, isManager, user, logout } = useAuth();
   const navigate = useNavigate();
+  const [alertCount, setAlertCount] = useState(0);
+
+  useEffect(() => {
+    async function loadAlerts() {
+      try {
+        const result = await fetchAlerts();
+        setAlertCount(result.count);
+      } catch (_) {
+        // Silently ignore — alerts badge is non-critical
+      }
+    }
+    loadAlerts();
+    // Refresh every 30 seconds
+    const interval = setInterval(loadAlerts, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (!isAuthenticated) return null;
 
@@ -25,7 +43,10 @@ function NavLinks() {
           <>
             <button onClick={() => navigate('/menu')}>Menu</button>
             <button onClick={() => navigate('/dashboard')}>Dashboard</button>
-            <button onClick={() => navigate('/alerts')}>Alerts</button>
+            <button onClick={() => navigate('/alerts')}>
+              Alerts
+              {alertCount > 0 && <span className="nav-badge">{alertCount}</span>}
+            </button>
           </>
         )}
       </nav>
@@ -54,7 +75,11 @@ export default function App() {
               path="/"
               element={
                 <ProtectedRoute>
-                  <Navigate to="/orders" replace />
+                  {() => {
+                    const { isManager } = useAuth();
+                    const target = isManager ? '/dashboard' : '/orders';
+                    return <Navigate to={target} replace />;
+                  }}
                 </ProtectedRoute>
               }
             />

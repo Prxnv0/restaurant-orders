@@ -264,3 +264,36 @@ The most subtle M7 implementation choice — the alert reappearance query — wa
 *Implementation prompts continue below as the project progresses.*
 
 ---
+
+## Milestone 8 implementation — Frontend: Manager Views
+
+### What we asked
+"Start Milestone 8. First read docs/plan.md and follow the M5–M13 Documentation & Traceability Rules. Do not rely on conversation memory."
+
+### What we got
+The AI:
+- Re-read `docs/plan.md` for the M8 scope (Goal 1/7/8/10 UI surfaces), the placeholder components, the MenuPage already fully implemented from M3, and the M7 plan (Dashboard/Alerts API helpers already added to `api.js`).
+- Implemented `frontend/src/pages/DashboardPage.jsx` — full dashboard: headline metric tiles (open orders, placed today, served today, revenue today in currency format), status breakdown table with badges, waiter breakdown table (name + orders today), 14-day chart as labeled table (date + orders + revenue per row, zero-filled), CSV download button using blob-based download.
+- Implemented `frontend/src/pages/AlertsPage.jsx` — active alerts list with order id, table number, status badge, age in minutes, triggered timestamp, dismiss button with optimistic UI update, dismiss-in-progress state per alert.
+- Updated `frontend/src/App.jsx` — role-based landing redirect (managers → `/dashboard`, waiters → `/orders`), nav badge on Alerts button with 30-second refresh interval, 404 error handled silently.
+- Updated `frontend/src/styles.css` — added `.nav-badge` (red pill on nav), `.metric-tile`, `.metric-value`, `.metric-label`.
+- Verified `frontend/build` succeeds (194KB bundle), all 108 backend tests pass.
+- Updated `docs/plan.md` (M8 marked ✅, estimate ~1h vs actual, delivered list, notes).
+- Added Decisions 26, 27 to `docs/decisions.md` (manager landing route, 14-day chart as labeled table).
+
+### What we corrected
+**Import error: `useState` imported from `react-router-dom` instead of `react`:**
+
+On the first edit to `App.jsx`, the AI tried to import `useState` and `useEffect` from `react-router-dom` (a copy-paste carry-over from other files). Vite's build failed with `"useState" is not exported by "node_modules/react-router-dom/dist/index.js"`.
+
+**Correction:** Split the import into two lines: `useState` and `useEffect` from `react`, `Routes`, `Route`, `Navigate`, `useNavigate` from `react-router-dom`. Verified `npm run build` succeeds.
+
+**Alert page using undefined `StatusBadge` function:**
+
+The AlertsPage rendered a `<StatusBadge>` component but the function was defined at the bottom of the file after the JSX return. In React, components must be defined or imported before use in JSX — however this did not cause a runtime error because the component is defined in the same file scope before the JSX is executed. Still corrected for readability and correct ordering: moved `StatusBadge` above the `AlertsPage` export.
+
+### What was already correct
+- `MenuPage.jsx` already had the full manager UI from M3 (add/edit/archive, multi-select bulk update with per-item success/reject, role-gated rendering via `ProtectedRoute`). M8 verified the role-gating works end-to-end.
+- `api.js` already had `fetchDashboard`, `fetchAlerts`, `dismissAlert`, `fetchTodaysOrdersCsv` helpers from M7.
+- `styles.css` already had status badge styles from M4.
+- The alert badge fetcher uses try/catch so the nav silently degrades if the API is unavailable.

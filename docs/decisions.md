@@ -204,3 +204,19 @@ Additional decisions will be recorded here as the project develops. Examples tha
 - **Why:** A spreadsheet with one row per line is the most natural representation of a restaurant bill in tabular form — each row is one item. The order total on the first row is a standard spreadsheet convention that makes the bill readable without a separate aggregate. Including voided lines with a clear `Voided` flag gives a full audit trail.
 - **What users see:** The manager downloads `orders-2026-09-03.csv` and opens it in Excel. Each line is a row, the order total is in column O (visible on the first line), voided items are flagged. The file opens correctly in Excel, LibreOffice, and Google Sheets.
 - **What this cost:** None — this is the simplest representation that matches how order-line data is stored.
+
+## Decision 26 — Manager default landing route (M8)
+
+- **Chose:** When a manager signs in, the default landing view (`/`) redirects to `/dashboard`. When a waiter signs in, `/` redirects to `/orders`.
+- **Rejected:** Always redirecting to `/orders` (would add an extra click for managers to see their key metrics), always redirecting to `/dashboard` (waiters don't have dashboard access and would hit a role-permited landing page), a single welcome page with role-conditional content (adds extra UI complexity).
+- **Why:** The README explicitly states "Goal 8: A landing view" — the manager's landing view should be the dashboard showing headline metrics. Waiters' primary workflow starts with their orders list. The redirect logic lives inside the root Route's ProtectedRoute wrapper, using `useAuth` to check `isManager` at render time.
+- **What users see:** Manager logs in via `/login`, gets redirected to `/dashboard` which shows the headline metrics. Waiter logs in, gets redirected to `/orders` showing their active orders.
+- **What this cost:** None — the redirect is a single Navigate component inside a function component passed to ProtectedRoute.
+
+## Decision 27 — Dashboard 14-day chart as labeled table (M8)
+
+- **Chose:** Render the 14-day "Orders Served" chart as an HTML table with columns: Date, Orders, Revenue. Each day is a row, zero-filled for days with no activity.
+- **Rejected:** Using a JavaScript charting library (Chart.js, Recharts, D3.js) to render a bar chart or line chart.
+- **Why:** Decision 14 in plan.md explicitly noted: "No charting library for the 14-day chart". A plain table is zero dependencies, works without any JS bundles for the chart, and is accessible out of the box. It also avoids any potential CSP issues with external script sources. The table is styled with the existing card CSS.
+- **What users see:** On the dashboard page, under the headline metrics and breakdowns, there's a "Orders Served (Last 14 Days)" section with a table. Each row shows the date (YYYY-MM-DD), number of orders served that day, and total revenue for that day. Days with no orders show 0 for both columns.
+- **What this cost:** None — the table renders instantly from the JSON payload. No additional JavaScript bundle size.
