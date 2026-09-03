@@ -93,7 +93,7 @@ The following are explicitly out of scope for this submission:
 
 | Component | Runtime Location | Status |
 |-----------|-----------------|--------|
-| React frontend | Browser (Vercel-hosted static + dynamic) | Implemented: auth (M2), orders + detail (M4), menu CRUD (M3), lifecycle + history (M5), collaborators + search (M6), dashboard + alerts API helpers (M7); dashboard and alerts UI in M8 |
+| React frontend | Browser (Vercel-hosted static + dynamic) | Implemented: auth (M2), orders + detail (M4), menu CRUD (M3), lifecycle + history (M5), collaborators + search (M6), dashboard + alerts API helpers (M7); dashboard and alerts UI in M8; waiter views (history timeline, notes panel, archive/restore) in M9 |
 | Express backend | Render (Node.js process) | Implemented: auth (M2), menu CRUD (M3), orders + lines (M4), lifecycle + history (M5), collaborators + search (M6), dashboard + alerts + CSV (M7) |
 | PostgreSQL | Supabase (managed PostgreSQL) | Implemented (schema + seed) |
 | Prisma migrations | Run during backend setup, applied to Supabase | Implemented (migrations pending) |

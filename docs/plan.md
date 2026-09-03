@@ -164,7 +164,7 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 - All manager-only routes use `ProtectedRoute` with `allowedRoles={['MANAGER']}` — waiters get redirected to `/orders` if they navigate directly
 - MenuPage already had full manager UI from M3; M8 simply verified the role-gating works end-to-end
 
-### Milestone 9 — Frontend: Waiter Views (est. 1.5 hours) ⏳ PENDING
+### Milestone 9 — Frontend: Waiter Views (est. 1.5 hours) ✅ COMPLETE
 **Requirements satisfied:**
 - **Goal 2** (UI): create-order form, list of own + collab orders
 - **Goal 3** (UI): order detail with lines and running total
@@ -173,13 +173,19 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 - **Goal 6** (UI): search/filter/sort/paginate the orders list
 - **Goal 9** (UI): history timeline panel on order detail
 
-**Frontend scope:**
-- `OrdersPage`: list with search input, status filter dropdown, waiter filter, date filter, sort selector, pagination, total match count
-- `OrderDetailPage`: header (table, status, primary waiter, collaborator list), lines table with running total, void line button + reason modal, status-change buttons, history timeline, notes panel, add-note form, add-collaborator form
-- `NewOrderPage` (or modal): create order with table number
-- `OrdersListCreate` button visible to both roles
-- For waiters, the default landing view (`/`) redirects to `/orders`
-- Decisions to record: void-reason modal pattern, how to render the timeline
+**Delivered:**
+- `frontend/src/pages/OrderDetailPage.jsx` — fully wired: history timeline (fetches `GET /api/orders/:id/history`, renders vertical timeline with dot-markers, event-type descriptions built from `details` JSON, actor name, timestamp), notes panel (fetches `GET /api/orders/:id/notes`, renders newest-first list, add-note form), archive/restore buttons in header (primary waiter or manager only, via `POST /api/orders/:id/archive` and `/restore`). All mutations (status change, add line, void, add note, add/remove collaborator) now refresh the history timeline on completion. `handleRemoveCollab` now also refreshes history (was a bug fix — `COLLABORATOR_REMOVED` is a history event).
+- `frontend/src/styles.css` — added `.timeline`, `.timeline-entry`, `.timeline-marker`, `.timeline-content`, `.timeline-text`, `.timeline-time` for the vertical timeline; `.notes-list`, `.note-entry`, `.note-meta`, `.note-content` for the notes list.
+- `frontend/src/api.js` — already had all helpers needed (`fetchOrderHistory`, `fetchOrderNotes`, `addOrderNote`, `addCollaborator`, `removeCollaborator`, `archiveOrder`, `restoreOrder`).
+- Decisions 28 (void-reason inline form) and 29 (history timeline + notes list rendering) recorded.
+- Frontend builds clean (`npm run build` succeeds, 199KB bundle); all 108 backend tests pass.
+
+**Notes:**
+- The waiter landing redirect to `/orders` was already working from M8 (managers → `/dashboard`, waiters → `/orders`).
+- `OrdersPage` with full search/filter/sort/pagination was already complete from M4/M6.
+- `NewOrderPage` with create-order form was already complete from M4.
+- Void-reason inline form was already partially present in the M6 shell; M9 completed the full wire to the API and error handling.
+- History entries use `eventType` from the `details` JSONB (Decision 19) to render human-readable descriptions per type.
 
 ### Milestone 10 — Critical Automated Tests (est. 1 hour) ⏳ PENDING
 **Purpose:** Verify the server-side rules the README explicitly requires, **before** deployment. A deployed app that breaks the rules is worse than an undeployed app — testing before deploy prevents embarrassing public bugs.
@@ -409,12 +415,12 @@ These rules exist so that a reviewer — or a future session — can recover the
 | 6. Collaborators + Search | 2h | ~1.5h | ✅ |
 | 7. Dashboard + Alerts + CSV | 2h | ~1h | ✅ |
 | 8. Frontend: Manager | 1.5h | ~1h | ✅ |
-| 9. Frontend: Waiter | 1.5h | — | ⏳ |
+| 9. Frontend: Waiter | 1.5h | ~1h | ✅ |
 | 10. Critical Tests | 1h | — | ⏳ |
 | 11. Deploy + Smoke | 0.5h | — | ⏳ |
 | 12. Pre-Submission Check | 0.25h | — | ⏳ |
 | 13. Docs Final | 0.25h | — | ⏳ |
-| **Total** | **~15.5h** | **~12.5h so far** | 3 milestones remain |
+| **Total** | **~15.5h** | **~13.5h so far** | 2 milestones remain |
 
 ---
 

@@ -297,3 +297,51 @@ The AlertsPage rendered a `<StatusBadge>` component but the function was defined
 - `api.js` already had `fetchDashboard`, `fetchAlerts`, `dismissAlert`, `fetchTodaysOrdersCsv` helpers from M7.
 - `styles.css` already had status badge styles from M4.
 - The alert badge fetcher uses try/catch so the nav silently degrades if the API is unavailable.
+
+---
+
+## Milestone 9 implementation — Frontend: Waiter Views
+
+### What we asked
+"go through and read plan.md in docs and proceed with milestone 9. before proceeding give me brief summary about what you are going to do for milestone 9"
+
+Followed by: "LETS PROCEED"
+
+### What we got
+The AI:
+- Re-read `docs/plan.md` for the M9 scope (Goals 2/3/4/5/6/9 UI surfaces) and the "What was cut" section to confirm scope.
+- Inspected the existing `OrderDetailPage.jsx`, `OrdersPage.jsx`, `NewOrderPage.jsx`, `App.jsx`, `api.js`, `styles.css` to determine what was already built (M4/M6 shells, the waiter landing redirect from M8) and what was missing (history timeline, notes panel, archive/restore UI, complete history refresh on every mutation).
+- Added the `fetchOrderHistory`, `fetchOrderNotes`, `addOrderNote`, `archiveOrder`, `restoreOrder` imports to `OrderDetailPage.jsx`.
+- Added state for history/notes/loading, plus `noteContent`, `addingNote`, `noteError`, and archive/restore state. Added `loadHistory()` and `loadNotes()` and called both on initial mount and after every mutating action.
+- Added `handleAddNote` and `handleArchive` / `handleRestore` handlers.
+- Updated every existing mutation handler (`handleStatusChange`, `handleAddLine`, `handleVoidLine`, `handleAddCollab`, `handleRemoveCollab`) to also refresh the history timeline — since every state change writes a history entry, the timeline must reflect the current state.
+- Added a `renderHistoryDescription(entry)` helper that dispatches on `eventType` and reads the known fields documented in Decision 19 to produce a one-line human-readable description.
+- Added the History timeline section (vertical timeline with dot-markers, oldest-first ordering) and the Notes panel section (newest-first list + add-note form with textarea) at the bottom of the order detail page.
+- Added the Archive / Restore button in the page header (primary waiter or manager only — uses the same `canManageCollaborators` guard since both are owner-level operations).
+- Added `.timeline*` and `.notes-list` / `.note-*` CSS to `styles.css` — plain CSS, no library, no animations, consistent with the project's "no Tailwind" decision.
+- Verified `npm run build` succeeds (199KB bundle) and all 108 backend tests pass.
+- Updated `docs/plan.md` to mark M9 ✅, added delivered list, notes, and estimate vs actual.
+- Added Decisions 28 (void-reason inline form) and 29 (history timeline + notes list rendering) to `docs/decisions.md`.
+- Updated `docs/architecture.md` (M9 status added to the React frontend row).
+
+### What we corrected
+
+**Bug found in M6: `handleRemoveCollab` did not refresh history:**
+
+The M6 `OrderDetailPage` did not refresh the history timeline after removing a collaborator. Since the backend writes a `COLLABORATOR_REMOVED` history entry on every successful removal, the timeline would silently fall out of sync after a removal.
+
+**Correction:** M9 added `await loadHistory()` to `handleRemoveCollab` (and to every other mutation handler — `handleAddLine`, `handleStatusChange`, `handleVoidLine`, `handleAddCollab`, `handleAddNote`, `handleArchive`, `handleRestore`). The fix is one line per handler; the resulting timeline is now in sync with the order state after every operation.
+
+**Frontend: `notesError` referenced before declaration (caught by `npm run build`):**
+
+When drafting the Notes panel JSX, the AI referenced `notesError` inside the Notes section but had only declared `noteError` (the add-note form error). Vite's build step would have flagged the undeclared variable: `ReferenceError: notesError is not defined` if the notes load ever failed at runtime, since JSX destructuring is evaluated lazily.
+
+**Correction:** Declared `notesError` state alongside `notes` and `notesLoading`, wired it to `loadNotes` (sets it on failure, clears it on success), and surfaced it in the JSX above the notes list. The reference at line ~627 now resolves to a real state variable.
+
+### What was already correct
+- The waiter landing redirect (`/` → `/orders` for waiters, `/dashboard` for managers) was already in place from M8.
+- `OrdersPage` with search/filter/sort/pagination was complete from M4/M6.
+- `NewOrderPage` with the create-order form was complete from M4.
+- The void-reason inline form was already partially in the M6 shell; M9 completed the wire to the API.
+- All backend endpoints for history, notes, archive, and restore were already in place from M5/M6.
+- `api.js` already had every helper needed (M5/M6/M7); no additions required.

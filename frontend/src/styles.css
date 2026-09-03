@@ -113,3 +113,93 @@ th { background: #f0f0f1; font-weight: 600; }
   letter-spacing: 0.4px;
   margin-top: 4px;
 }
+
+/* M9: Order detail — history timeline */
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  position: relative;
+}
+
+.timeline-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+/* Vertical line connecting entries */
+.timeline-entry:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 16px;
+  bottom: -12px;
+  width: 2px;
+  background: #e5e7eb;
+}
+
+.timeline-marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #d1d5db;
+  border: 2px solid #9ca3af;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline-text {
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.timeline-text strong {
+  color: #374151;
+}
+
+.timeline-text em {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.timeline-time {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* M9: Order detail — notes list */
+.notes-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.note-entry {
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f1;
+}
+
+.note-entry:last-child {
+  border-bottom: none;
+}
+
+.note-meta {
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.note-content {
+  font-size: 13px;
+  color: #374151;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

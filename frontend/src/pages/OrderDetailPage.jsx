@@ -6,8 +6,13 @@ import {
   addOrderLine,
   changeOrderStatus,
   voidOrderLine,
+  fetchOrderHistory,
+  fetchOrderNotes,
+  addOrderNote,
   addCollaborator,
   removeCollaborator,
+  archiveOrder,
+  restoreOrder,
 } from '../api';
 import { useAuth } from '../context/AuthContext';
 
@@ -53,6 +58,22 @@ export default function OrderDetailPage() {
   const [voidReason, setVoidReason] = useState('');
   const [voidError, setVoidError] = useState('');
 
+  // History
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  // Notes
+  const [notes, setNotes] = useState([]);
+  const [notesLoading, setNotesLoading] = useState(true);
+  const [notesError, setNotesError] = useState('');
+  const [noteContent, setNoteContent] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+  const [noteError, setNoteError] = useState('');
+
+  // Archive / restore
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveError, setArchiveError] = useState('');
+
   // ── Load order ───────────────────────────────────────────────────────
   const loadOrder = async () => {
     setLoading(true);
@@ -76,9 +97,36 @@ export default function OrderDetailPage() {
     }
   };
 
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const data = await fetchOrderHistory(id);
+      setHistory(data.history || []);
+    } catch (err) {
+      console.error('Failed to load history', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const loadNotes = async () => {
+    setNotesLoading(true);
+    setNotesError('');
+    try {
+      const data = await fetchOrderNotes(id);
+      setNotes(data.notes || []);
+    } catch (err) {
+      setNotesError(err.message || 'Failed to load notes');
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadOrder();
     loadMenuItems();
+    loadHistory();
+    loadNotes();
   }, [id]);
 
   // ── Auth helpers ────────────────────────────────────────────────────
@@ -95,6 +143,7 @@ export default function OrderDetailPage() {
     try {
       await changeOrderStatus(id, newStatus);
       await loadOrder();
+      await loadHistory();
     } catch (err) {
       setStatusError(err.message || 'Failed to change status');
     } finally {
@@ -117,6 +166,7 @@ export default function OrderDetailPage() {
       setQuantity(1);
       setSpecialInstructions('');
       await loadOrder();
+      await loadHistory();
     } catch (err) {
       setAddError(err.message || 'Failed to add line');
     } finally {
@@ -132,6 +182,7 @@ export default function OrderDetailPage() {
       setVoidingLineId(null);
       setVoidReason('');
       await loadOrder();
+      await loadHistory();
     } catch (err) {
       setVoidError(err.message || 'Failed to void line');
     }
@@ -149,6 +200,7 @@ export default function OrderDetailPage() {
       setCollabEmail('');
       setCollabSuccess('Collaborator added.');
       await loadOrder();
+      await loadHistory();
     } catch (err) {
       setCollabError(err.message || 'Failed to add collaborator');
     } finally {
@@ -161,8 +213,58 @@ export default function OrderDetailPage() {
     try {
       await removeCollaborator(id, waiterId);
       await loadOrder();
+      await loadHistory();
     } catch (err) {
       setCollabError(err.message || 'Failed to remove collaborator');
+    }
+  };
+
+  // ── Add note ────────────────────────────────────────────────────────
+  const handleAddNote = async (e) => {
+    e.preventDefault();
+    if (!noteContent.trim()) return;
+    setNoteError('');
+    setAddingNote(true);
+    try {
+      await addOrderNote(id, noteContent.trim());
+      setNoteContent('');
+      // Notes list is ordered newest-first by the server, so just refetch.
+      await loadNotes();
+      // A note also creates a history entry, so refresh the timeline too.
+      await loadHistory();
+    } catch (err) {
+      setNoteError(err.message || 'Failed to add note');
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  // ── Archive / restore ──────────────────────────────────────────────
+  const handleArchive = async () => {
+    setArchiveError('');
+    setArchiveLoading(true);
+    try {
+      await archiveOrder(id);
+      await loadOrder();
+      await loadHistory();
+    } catch (err) {
+      setArchiveError(err.message || 'Failed to archive order');
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    setArchiveError('');
+    setArchiveLoading(true);
+    try {
+      await restoreOrder(id);
+      await loadOrder();
+      await loadHistory();
+    } catch (err) {
+      setArchiveError(err.message || 'Failed to restore order');
+    } finally {
+      setArchiveLoading(false);
     }
   };
 
@@ -172,13 +274,65 @@ export default function OrderDetailPage() {
 
   const nextStatuses = NEXT_STATUSES[order.status] || [];
 
+  // Render a single history entry as a one-line description. Dispatch on
+  // eventType, reading the known fields documented in Decision 19.
+  const renderHistoryDescription = (entry) => {
+    const d = entry.details || {};
+    switch (entry.eventType) {
+      case 'STATUS_CHANGE':
+        return (
+          <>
+            Status changed from <strong>{d.old_status}</strong> to{' '}
+            <strong>{d.new_status}</strong>
+          </>
+        );
+      case 'LINE_ADDED':
+        return (
+          <>
+            Line added: <strong>{d.quantity}×</strong> item
+            (price ${Number(d.unit_price).toFixed(2)})
+          </>
+        );
+      case 'LINE_VOIDED':
+        return (
+          <>
+            Line voided — <em>"{d.reason}"</em>
+          </>
+        );
+      case 'NOTE_ADDED':
+        return (
+          <>
+            Note added: <em>"{d.content}"</em>
+          </>
+        );
+      case 'COLLABORATOR_ADDED':
+        return <>Collaborator added</>;
+      case 'COLLABORATOR_REMOVED':
+        return <>Collaborator removed</>;
+      default:
+        return <>{entry.eventType}</>;
+    }
+  };
+
   return (
     <div className="card">
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <h2 style={{ margin: 0 }}>Order #{order.tableNumber}</h2>
-        <button onClick={() => navigate('/orders')} style={{ background: '#6c757d' }}>← Back</button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {orderIsArchived ? (
+            <button onClick={handleRestore} disabled={archiveLoading} style={{ background: '#0d9488' }}>
+              {archiveLoading ? 'Restoring...' : 'Restore'}
+            </button>
+          ) : (
+            <button onClick={handleArchive} disabled={archiveLoading} style={{ background: '#6c757d' }}>
+              {archiveLoading ? 'Archiving...' : 'Archive'}
+            </button>
+          )}
+          <button onClick={() => navigate('/orders')} style={{ background: '#6c757d' }}>← Back</button>
+        </div>
       </div>
+      {archiveError && <p style={{ color: 'red' }}>{archiveError}</p>}
 
       {/* ── Order meta ─────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
@@ -441,6 +595,75 @@ export default function OrderDetailPage() {
           Lines cannot be added to a {order.status.toLowerCase()} order.
         </p>
       )}
+
+      {/* ── History timeline ──────────────────────────────────────── */}
+      <div style={{ borderTop: '2px solid #ddd', paddingTop: '1rem', marginTop: '1.5rem' }}>
+        <h3>History</h3>
+        {historyLoading && <p className="muted">Loading history…</p>}
+        {!historyLoading && history.length === 0 && (
+          <p className="muted">No history entries yet.</p>
+        )}
+        {!historyLoading && history.length > 0 && (
+          <ul className="timeline">
+            {history.map((entry) => (
+              <li key={entry.id} className="timeline-entry">
+                <div className="timeline-marker" />
+                <div className="timeline-content">
+                  <div className="timeline-text">
+                    {renderHistoryDescription(entry)}{' '}
+                    <span className="muted">by {entry.actor?.name || 'system'}</span>
+                  </div>
+                  <div className="timeline-time muted">
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* ── Notes panel ────────────────────────────────────────────── */}
+      <div style={{ borderTop: '2px solid #ddd', paddingTop: '1rem', marginTop: '1.5rem' }}>
+        <h3>Notes</h3>
+        {notesError && <p style={{ color: 'red' }}>{notesError}</p>}
+        {noteError && <p style={{ color: 'red' }}>{noteError}</p>}
+        <form onSubmit={handleAddNote} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <textarea
+            value={noteContent}
+            onChange={(e) => {
+              setNoteContent(e.target.value);
+              setNoteError('');
+            }}
+            placeholder="Add a note about this order…"
+            maxLength={2000}
+            rows={2}
+            style={{ flex: 1, minWidth: 240, resize: 'vertical' }}
+            required
+          />
+          <button type="submit" disabled={addingNote || !noteContent.trim()}>
+            {addingNote ? 'Adding...' : 'Add Note'}
+          </button>
+        </form>
+
+        {notesLoading && <p className="muted">Loading notes…</p>}
+        {!notesLoading && notes.length === 0 && (
+          <p className="muted">No notes yet.</p>
+        )}
+        {!notesLoading && notes.length > 0 && (
+          <ul className="notes-list">
+            {notes.map((note) => (
+              <li key={note.id} className="note-entry">
+                <div className="note-meta">
+                  <strong>{note.createdBy?.name || 'system'}</strong>{' '}
+                  <span className="muted">— {new Date(note.createdAt).toLocaleString()}</span>
+                </div>
+                <div className="note-content">{note.content}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

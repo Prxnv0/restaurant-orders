@@ -213,6 +213,22 @@ Additional decisions will be recorded here as the project develops. Examples tha
 - **What users see:** Manager logs in via `/login`, gets redirected to `/dashboard` which shows the headline metrics. Waiter logs in, gets redirected to `/orders` showing their active orders.
 - **What this cost:** None — the redirect is a single Navigate component inside a function component passed to ProtectedRoute.
 
+## Decision 28 — Void-reason inline form on the lines table (M9)
+
+- **Chose:** The void-reason prompt appears inline in the lines table — clicking "Void" on a row reveals an input + Confirm/Cancel control in the same row, replacing the Void button.
+- **Rejected:** A dedicated modal dialog (Bootstrap modal, custom dialog element, or a React portal overlay) for the void-reason prompt.
+- **Why:** A modal adds cognitive overhead: the user must close it to see the table, navigate back to find the right row, and mentally re-associate the modal with the item. An inline control keeps the row in context — the user sees the item, types the reason, and confirms without leaving the table. The inline form is also zero extra dependencies (no modal library, no portal, no overlay CSS), consistent with the project's plain-CSS approach.
+- **What users see:** On the order detail page, each active line has a "Void" button in the last column. Clicking it expands an inline text input + Confirm/Cancel row. Confirm is disabled until a non-empty reason is typed.
+- **What this cost:** None — the pattern was already partially implemented in the M6 frontend shell. M9 completed the integration by wiring the API call and error handling.
+
+## Decision 29 — Vertical timeline + notes list for order history (M9)
+
+- **Chose:** Render the history as a vertical timeline with a dot-marker list, oldest entry at the top (chronological), each entry showing a human-readable description built from the `details` JSON and the actor name + timestamp. Render notes as a plain unordered list, newest first, above an add-note form.
+- **Rejected:** A tabbed interface (History | Notes tabs) — would require the user to switch contexts to see notes vs. history; a combined feed would blur the distinction between structured state-change events and freeform notes; a separate page for history would require extra navigation.
+- **Why:** The history timeline is append-only and events are naturally ordered chronologically; oldest-first matches how you'd read a log. The notes panel is separate but adjacent — both are visible in the same scroll on the order detail page. The history is a permanent, structured record; notes are user-added annotations. Keeping them visually distinct (timeline vs. list) makes their different semantics clear at a glance without a tab switch.
+- **What users see:** Below the order lines, a "History" section shows a vertical timeline with dots and connecting lines. A "Notes" section shows a list of notes (newest first) with name + time, above a textarea + submit button.
+- **What this cost:** None — this is the minimum structure needed to satisfy the Goal 9 UI requirement.
+
 ## Decision 27 — Dashboard 14-day chart as labeled table (M8)
 
 - **Chose:** Render the 14-day "Orders Served" chart as an HTML table with columns: Date, Orders, Revenue. Each day is a row, zero-filled for days with no activity.
