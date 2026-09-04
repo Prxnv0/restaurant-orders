@@ -269,8 +269,8 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 
 **Goal:** 13 test files, ~30-50 test cases total, run in <30 seconds. Run locally before deploying.
 
-### Milestone 11 — Deployment + Smoke Test (est. 0.5 hour) ⏳ PENDING
-**Prerequisite:** Milestone 10 must be ✅ (all 13 test suites pass locally against the test DB).
+### Milestone 11 — Deployment + Smoke Test (est. 0.5 hour) 🔄 IN-PROGRESS
+**Prerequisite:** Milestone 10 must be ✅ (all 13 test suites pass locally against the test DB). ✅ satisfied — M10 is complete.
 
 **Requirements satisfied:**
 - README "Host it for free" — live URL on free tiers
@@ -342,6 +342,40 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 - Environment variables set only in platform dashboards (no secrets in repo)
 - `SUBMISSION.md` Links section filled with live URLs and demo credentials
 - `docs/plan.md` Milestone 11 status updated to ✅
+
+**Delivered (in-repo, ready for the user to execute the cloud steps):**
+- `render.yaml` — Render blueprint for the Node backend (`restaurant-orders-api`).
+  Build: `npm install && npx prisma generate`. Start: `node src/index.js`.
+  Health check: `/api/health`. Env vars documented; `DATABASE_URL`,
+  `DIRECT_URL`, `JWT_SECRET`, `FRONTEND_ORIGIN` are `sync: false` (must be
+  set in the Render dashboard so secrets never enter the repo).
+- `vercel.json` — Vercel config for the Vite frontend. Build: `npm run build`,
+  output `dist`, framework `vite`, SPA fallback rewrite. Env var
+  `VITE_API_BASE_URL` is the only required one; it points at the deployed
+  Render backend URL.
+- `backend/.env.example` — rewritten to separate Supabase transaction-mode
+  (`DATABASE_URL`, used at runtime) from session-mode (`DIRECT_URL`, used by
+  Prisma for migrations). Documents the `openssl rand -base64 32` invocation
+  for `JWT_SECRET`. Notes that `FRONTEND_ORIGIN` is set in the Render
+  dashboard after Vercel is deployed.
+- `frontend/.env.example` — new file. Documents `VITE_API_BASE_URL` with a
+  placeholder pointing at the deployed backend.
+- `DEPLOY.md` — ordered, copy-pasteable runbook with six steps (Supabase →
+  Render → Vercel → CORS wire-back → smoke test all 10 goals → fill
+  `SUBMISSION.md`). Includes a "What if a step fails" troubleshooting table
+  that maps each likely failure to its fix.
+
+**Notes (scope of this in-repo change):**
+- The actual cloud accounts (Supabase, Render, Vercel) are **not** created from
+  this session — those require the user's interactive login. `DEPLOY.md` is
+  the runbook that the user (or a follow-up session with the credentials
+  available) executes to finish M11.
+- `SUBMISSION.md` is intentionally **not** filled with made-up URLs in this
+  pass. The "Notes for the reviewer" section is pre-populated with the
+  host-quirks (Render cold start, Supabase pause) that are already known from
+  the plan, so the user only has to drop in the live URLs and credentials.
+- M11 will be marked ✅ once `SUBMISSION.md` is filled with the live URLs and
+  the smoke test in DEPLOY.md Step 5 has been walked through.
 
 ### Milestone 12 — Pre-Submission Verification (est. 0.25 hour) ⏳ PENDING
 **Requirements satisfied:** README "How to submit" + "Use git properly" + "What you must commit"
@@ -531,7 +565,7 @@ These rules exist so that a reviewer — or a future session — can recover the
 | 8. Frontend: Manager | 1.5h | ~1h | ✅ |
 | 9. Frontend: Waiter | 1.5h | ~1h | ✅ |
 | 10. Critical Tests | 1h | ~2.5h | ✅ |
-| 11. Deploy + Smoke | 0.5h | — | ⏳ |
+| 11. Deploy + Smoke | 0.5h | TBD | 🔄 |
 | 12. Pre-Submission Check | 0.25h | — | ⏳ |
 | 13. Docs Final | 0.25h | — | ⏳ |
 | **Total** | **~15.5h** | **~13.5h so far** | 2 milestones remain |

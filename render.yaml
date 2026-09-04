@@ -1,0 +1,41 @@
+# Render Blueprint — Restaurant Orders Backend
+# Deploy: render.com → New → Blueprint → upload this file (or connect GitHub repo)
+#
+# After deploying, go to the Render service → Environment and set:
+#   FRONTEND_ORIGIN  = your Vercel frontend URL (e.g. https://your-app.vercel.app)
+#
+# DO NOT set DATABASE_URL or other secrets here. Set them in the Render dashboard
+# under Environment → Environment Variables so they are kept out of the repo.
+
+services:
+  - type: web
+    name: restaurant-orders-api
+    runtime: node
+    region: oregon           # pick whichever region is closest to your users
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate
+    startCommand: node src/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: PORT
+        value: "4000"
+      # JWT_SECRET: generate with  openssl rand -base64 32  and paste into the dashboard
+      - key: JWT_SECRET
+        sync: false
+      # DATABASE_URL: get from Supabase → Project Settings → Database → Connection string
+      # Use "Transaction" mode connection string (port 6543, pgbouncer=true)
+      - key: DATABASE_URL
+        sync: false
+      # DIRECT_URL: "Session" mode connection string (port 5432) — only needed for migrations.
+      # Supabase requires session mode for Prisma migration operations.
+      - key: DIRECT_URL
+        sync: false
+      - key: ALERT_THRESHOLD_MINUTES
+        value: "30"
+      - key: APP_TIMEZONE
+        value: "UTC"
+      # FRONTEND_ORIGIN is set in the Render dashboard after Vercel is deployed (see step 7 of DEPLOY.md)
+      - key: FRONTEND_ORIGIN
+        sync: false

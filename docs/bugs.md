@@ -275,3 +275,9 @@ The bug was discovered during M6 verification (`npm run build` to confirm the M6
 - **Why this fix:** A fixed page number (e.g. `page=4`) is not stable — each test run that creates orders pushes the archived order further back. Computing the last page from the total count is deterministic and self-correcting. Using `limit=1` for the total query is the most efficient way to retrieve just the count without fetching data rows.
 - **Verification:** Test 10 passed after the test fix. All 15 Test 10 tests now pass.
 - **Status:** Fixed
+
+---
+
+## M11 — Deployment + Smoke Test
+
+No bugs were introduced in M11. The milestone is purely declarative (YAML/JSON config + documentation); no application code was changed, so the existing 242 backend tests and `npm run build` continue to pass unchanged. The pre-existing `/api/health` endpoint (added in M1) is reused for the Render health check; no new endpoint or middleware was added. `git status` confirms only the 7 intended files were touched (4 new: `render.yaml`, `vercel.json`, `DEPLOY.md`, `frontend/.env.example`; 3 modified: `backend/.env.example`, `docs/plan.md`, `SUBMISSION.md`).

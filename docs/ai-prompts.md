@@ -345,3 +345,36 @@ When drafting the Notes panel JSX, the AI referenced `notesError` inside the Not
 - The void-reason inline form was already partially in the M6 shell; M9 completed the wire to the API.
 - All backend endpoints for history, notes, archive, and restore were already in place from M5/M6.
 - `api.js` already had every helper needed (M5/M6/M7); no additions required.
+
+---
+
+## Milestone 11 implementation — Deployment + Smoke Test
+
+### What we asked
+"go through the repo and read the plan.md in docs and start implementing the m11 and follow the plan for implementing"
+
+### What we got
+The AI:
+- Re-read `docs/plan.md` M11 scope (Deployment + Smoke Test: Supabase production project, Render backend, Vercel frontend, CORS wiring, smoke test all 10 goals, fill SUBMISSION.md).
+- Assessed that creating real cloud resources (Supabase project, Render service, Vercel project) requires interactive login and credentials that cannot be provided in this CLI session.
+- Chose the "Prepare deploy files only" approach: create the platform configuration files and a runbook so the user executes the cloud steps themselves.
+- Created `render.yaml` — Render Blueprint for the Node backend (`restaurant-orders-api`). RootDir `backend/`, build `npm install && npx prisma generate`, start `node src/index.js`, health check `/api/health`. `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `FRONTEND_ORIGIN` are `sync: false` (set in the Render dashboard so secrets never enter the repo).
+- Created `vercel.json` — Vercel config for the Vite frontend. Build command, output `dist`, SPA fallback rewrite for client routing, env var `VITE_API_BASE_URL`.
+- Created `frontend/.env.example` — documents `VITE_API_BASE_URL` with a placeholder pointing at the deployed backend.
+- Rewrote `backend/.env.example` — separates transaction-mode (`DATABASE_URL`, for the running app) from session-mode (`DIRECT_URL`, for Prisma migrations). Documents the `openssl rand -base64 32` invocation for `JWT_SECRET`. Notes that `FRONTEND_ORIGIN` is set in the Render dashboard after Vercel is deployed.
+- Created `DEPLOY.md` — ordered 6-step runbook: (1) Create Supabase project, (2) Deploy backend to Render, (3) Deploy frontend to Vercel, (4) Wire CORS back to Render, (5) Smoke test all 10 goals with demo credentials, (6) Fill SUBMISSION.md. Includes a "What if a step fails" troubleshooting table.
+- Updated `docs/plan.md` — M11 status changed from ⏳ to 🔄, added Delivered list and Notes explaining the cloud-account scope limitation.
+- Updated `SUBMISSION.md` — pre-filled host-quirks (Render cold start 30–60s after 15 min idle, Supabase pause after 1 week idle), demo credentials table, stack table with honest justifications.
+- Verified: backend `npm test` passes (242 tests across 17 files), frontend `npm run build` succeeds (198.72 kB bundle), `vercel.json` parses as valid JSON, `render.yaml` is structurally sound.
+- `git status` confirmed only the 7 expected files changed (no unintended side effects).
+
+### What we corrected
+**No corrections needed this milestone.** The M11 deliverables are configuration files and documentation — no implementation code was written, so there were no logic bugs to correct. The plan.md M11 steps were unambiguous and the implementation followed them directly.
+
+### What was already correct
+- The backend already has a `/api/health` endpoint (added in M1) — required by Render's health check.
+- `backend/src/index.js` already uses `process.env.FRONTEND_ORIGIN` for CORS — no code change needed for deployment.
+- `frontend/vite.config.js` already has the `/api` proxy for dev and notes that production calls the backend directly via `VITE_API_BASE_URL` — no code change needed.
+- The `backend/package.json` `prisma:migrate:deploy` script already exists — the Render build command uses `npx prisma generate` (which is the correct Render build step; migrations run separately via `migrate deploy` in the runbook).
+- All 242 backend tests pass with no changes to test files.
+
