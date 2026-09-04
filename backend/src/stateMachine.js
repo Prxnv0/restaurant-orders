@@ -77,7 +77,7 @@ function assertValidTransition(from, to) {
     ).withDetails({ code: 'INVALID_TRANSITION', current_status: from, attempted_status: to });
   }
 
-  if (from === to) {
+  if (from === to && !['SERVED', 'CANCELLED'].includes(from)) {
     throw AppError.CONFLICT(
       `Order is already in status ${from}`
     ).withDetails({
@@ -97,7 +97,7 @@ function assertValidTransition(from, to) {
   let reason = 'illegal_transition';
   let humanMessage = `Cannot move order from ${from} to ${to}`;
 
-  if (to === 'CANCELLED' && !['PLACED', 'ACCEPTED'].includes(from)) {
+  if (to === 'CANCELLED' && !['PLACED', 'ACCEPTED'].includes(from) && !['SERVED', 'CANCELLED'].includes(from)) {
     reason = 'cancel_too_late';
     humanMessage = `Cannot cancel an order in status ${from}; cancellation is only allowed while Placed or Accepted`;
   } else if (['SERVED', 'CANCELLED'].includes(from)) {

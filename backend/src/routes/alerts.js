@@ -17,9 +17,11 @@ function getThresholdMs() {
 // Manager: all active alerts.
 // Waiter: only alerts for orders where they are primary waiter or collaborator.
 // An alert is "active" when:
-//   1. The order is not in a terminal status (READY/SERVED/CANCELLED — alerts are deleted there)
+//   1. The order is not in a terminal status (SERVED/CANCELLED — alerts are resolved there)
+//      NOTE: READY is not a terminal alert status but is excluded from active alerts per
+//      README Goal 10: alerts fire for orders "without reaching Ready" — PLACED/ACCEPTED/PREPARING only.
 //   2. The order is past the threshold since it was last dismissed (or never dismissed)
-//   3. resolvedAt is null (deleted when terminal reached, so this is always null for non-deleted rows)
+//   3. resolvedAt is null (resolved when terminal status is reached)
 router.get('/', auth, async (req, res, next) => {
   try {
     const thresholdMs = getThresholdMs();
@@ -29,11 +31,13 @@ router.get('/', auth, async (req, res, next) => {
     // Find alerts where the order is past the threshold since last dismissal.
     // Subquery: latest dismissal for this alert.
     // Show alert if: no dismissals exist OR latest dismissal < thresholdAgo.
+    // Per README Goal 10: alerts are for orders that have NOT reached READY.
+    // So active-alert statuses are PLACED, ACCEPTED, and PREPARING only.
     const alerts = await prisma.alert.findMany({
       where: {
         resolvedAt: null,
         order: {
-          status: { in: ['PLACED', 'ACCEPTED', 'PREPARING', 'READY'] },
+          status: { in: ['PLACED', 'ACCEPTED', 'PREPARING'] },
         },
       },
       include: {

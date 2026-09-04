@@ -20,18 +20,25 @@ function csvEscape(val) {
 // GET /api/export/orders/today
 router.get('/orders/today', auth, requireRole('MANAGER'), async (req, res, next) => {
   try {
-    // Determine today's date range in local timezone.
+    // Determine today's date range in local timezone using Intl.DateTimeFormat.
+    // This avoids the unreliable toLocaleString → Date round-trip.
     const tz = process.env.APP_TIMEZONE || 'UTC';
-    const localNow = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
-    const offsetMs = localNow.getTime() - new Date().getTime();
+    const now = new Date();
 
-    const todayStart = new Date(localNow);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayStartUTC = new Date(todayStart.getTime() - offsetMs);
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    // en-CA format: YYYY-MM-DD — parseable by Date constructor as UTC midnight.
+    const [year, month, day] = fmt.format(now).split('-').map(Number);
 
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
-    const todayEndUTC = new Date(todayEnd.getTime() - offsetMs);
+    const todayStartUTC = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+    const todayEndUTC = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0, 0));
+
+    // Local date string for the filename (YYYY-MM-DD in the configured timezone).
+    const localDateStr = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
     // Fetch today's orders (any status, include archived) with lines.
     const orders = await prisma.order.findMany({
@@ -134,8 +141,7 @@ router.get('/orders/today', auth, requireRole('MANAGER'), async (req, res, next)
     const csv = csvLines.join('\r\n');
 
     // Filename: orders-YYYY-MM-DD.csv
-    const todayLocal = localNow.toISOString().slice(0, 10);
-    const filename = `orders-${todayLocal}.csv`;
+    const filename = `orders-${localDateStr}.csv`;
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

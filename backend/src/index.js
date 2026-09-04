@@ -49,8 +49,14 @@ app.use((err, _req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+
+// Only start listening when this file is the entry point (node src/index.js).
+// When required by tests (supertest), the app object is used directly without
+// binding to a port — this prevents EADDRINUSE on subsequent requires.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server listening on port ${PORT}`);
+  });
+}
 
 module.exports = app;

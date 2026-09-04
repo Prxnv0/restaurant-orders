@@ -151,8 +151,9 @@ router.get('/', auth, async (req, res, next) => {
     }
 
     // Sort
+    const sortMap = { placed_at: 'createdAt', status: 'status', table_number: 'tableNumber' };
     const orderBy = {};
-    orderBy[sort] = order;
+    orderBy[sortMap[sort] || sort] = order;
 
     // Pagination
     const skip = (page - 1) * limit;
@@ -186,7 +187,7 @@ router.get('/', auth, async (req, res, next) => {
 
 // ── GET /api/orders/:id ─────────────────────────────────────────────────
 // Get order with lines, total, and access check
-router.get('/:id', auth, requireOrderAccess, async (req, res, next) => {
+router.get('/:id', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     const order = await prisma.order.findUnique({
       where: { id: req.params.id },
@@ -226,7 +227,7 @@ router.get('/:id', auth, requireOrderAccess, async (req, res, next) => {
 // ── POST /api/orders/:id/lines ──────────────────────────────────────────
 // Add a line to an order (price snapshot at time of add)
 // Blocked if order is SERVED or CANCELLED
-router.post('/:id/lines', auth, requireOrderAccess, async (req, res, next) => {
+router.post('/:id/lines', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     joiCheck(addLine, req.body);
 
@@ -288,7 +289,7 @@ router.post('/:id/lines', auth, requireOrderAccess, async (req, res, next) => {
 
 // ── POST /api/orders/:id/archive ────────────────────────────────────────
 // Archive order (primary waiter or manager only)
-router.post('/:id/archive', auth, requireOrderAccess, async (req, res, next) => {
+router.post('/:id/archive', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     const order = req.order;
 
@@ -309,7 +310,7 @@ router.post('/:id/archive', auth, requireOrderAccess, async (req, res, next) => 
 
 // ── POST /api/orders/:id/restore ────────────────────────────────────────
 // Restore archived order (primary waiter or manager only)
-router.post('/:id/restore', auth, requireOrderAccess, async (req, res, next) => {
+router.post('/:id/restore', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     const order = req.order;
 
@@ -332,7 +333,7 @@ router.post('/:id/restore', auth, requireOrderAccess, async (req, res, next) => 
 // Change order status — all transitions go through the state machine.
 //   If status -> SERVED: sets served_at
 //   If status -> READY|SERVED|CANCELLED: resolves any active alert
-router.patch('/:id/status', auth, requireOrderAccess, async (req, res, next) => {
+router.patch('/:id/status', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     joiCheck(changeStatus, req.body);
 
@@ -363,9 +364,17 @@ router.patch('/:id/status', auth, requireOrderAccess, async (req, res, next) => 
       where: { id: order.id },
       data: {
         ...updateData,
-        ...(resolveAlert ? { alert: { update: { resolvedAt: new Date() } } } : {}),
       },
     });
+
+    if (resolveAlert) {
+      const alert = await prisma.alert.findFirst({
+        where: { orderId: order.id, resolvedAt: null },
+      });
+      if (alert) {
+        await prisma.alert.update({ where: { id: alert.id }, data: { resolvedAt: new Date() } });
+      }
+    }
 
     // Create history entry for the status change
     await makeHistory(order.id, 'STATUS_CHANGE', {
@@ -382,7 +391,7 @@ router.patch('/:id/status', auth, requireOrderAccess, async (req, res, next) => 
 // ── POST /api/orders/:id/lines/:lineId/void ───────────────────────────
 // Void a line — requires a non-empty reason.
 // Blocked if order is SERVED or CANCELLED, or if line is already VOID.
-router.post('/:id/lines/:lineId/void', auth, requireOrderAccess, async (req, res, next) => {
+router.post('/:id/lines/:lineId/void', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     joiCheck(voidLine, req.body);
 
@@ -439,7 +448,7 @@ router.post('/:id/lines/:lineId/void', auth, requireOrderAccess, async (req, res
 
 // ── GET /api/orders/:id/history ────────────────────────────────────────
 // Returns all history entries for an order, newest last (ordered by created_at asc).
-router.get('/:id/history', auth, requireOrderAccess, async (req, res, next) => {
+router.get('/:id/history', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     const entries = await prisma.orderHistoryEntry.findMany({
       where: { orderId: req.params.id },
@@ -459,7 +468,7 @@ router.get('/:id/history', auth, requireOrderAccess, async (req, res, next) => {
 
 // ── GET /api/orders/:id/notes ──────────────────────────────────────────
 // Returns all notes for an order, newest first.
-router.get('/:id/notes', auth, requireOrderAccess, async (req, res, next) => {
+router.get('/:id/notes', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     const notes = await prisma.orderNote.findMany({
       where: { orderId: req.params.id },
@@ -479,7 +488,7 @@ router.get('/:id/notes', auth, requireOrderAccess, async (req, res, next) => {
 
 // ── POST /api/orders/:id/notes ─────────────────────────────────────────
 // Append a note to an order — append-only, no edit or delete.
-router.post('/:id/notes', auth, requireOrderAccess, async (req, res, next) => {
+router.post('/:id/notes', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     joiCheck(addNote, req.body);
 
@@ -511,7 +520,7 @@ router.post('/:id/notes', auth, requireOrderAccess, async (req, res, next) => {
 
 // ── POST /api/orders/:id/collaborators ──────────────────────────────────
 // Add a waiter as a collaborator on an order. Primary waiter or manager only.
-router.post('/:id/collaborators', auth, requireOrderAccess, async (req, res, next) => {
+router.post('/:id/collaborators', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     joiCheck(addCollaborator, req.body);
 
@@ -589,7 +598,7 @@ router.post('/:id/collaborators', auth, requireOrderAccess, async (req, res, nex
 
 // ── DELETE /api/orders/:id/collaborators/:waiterId ──────────────────────
 // Remove a waiter as a collaborator on an order. Primary waiter or manager only.
-router.delete('/:id/collaborators/:waiterId', auth, requireOrderAccess, async (req, res, next) => {
+router.delete('/:id/collaborators/:waiterId', auth, requireOrderAccess(), async (req, res, next) => {
   try {
     const order = req.order;
 

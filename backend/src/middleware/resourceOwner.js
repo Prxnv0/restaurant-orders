@@ -26,11 +26,6 @@ function requireOrderAccess(orderParam = 'id') {
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: {
-        collaborators: {
-          where: { waiterId: req.user.id },
-        },
-      },
       select: {
         id: true,
         tableNumber: true,
@@ -40,7 +35,9 @@ function requireOrderAccess(orderParam = 'id') {
         servedAt: true,
         createdAt: true,
         updatedAt: true,
-        collaborators: true, // included above for access check
+        collaborators: {
+          where: { waiterId: req.user.id },
+        },
       },
     });
 

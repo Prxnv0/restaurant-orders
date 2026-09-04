@@ -66,7 +66,12 @@ async function main() {
       { name: 'Tiramisu', price: 7.5, available: true },
     ].map((m) =>
       prisma.menuItem.create({
-        data: { ...m, isArchived: false },
+        data: {
+          name: m.name,
+          price: m.price,
+          isAvailable: m.available,
+          isArchived: false,
+        },
       })
     )
   );

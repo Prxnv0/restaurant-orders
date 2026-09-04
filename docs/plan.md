@@ -187,12 +187,69 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 - Void-reason inline form was already partially present in the M6 shell; M9 completed the full wire to the API and error handling.
 - History entries use `eventType` from the `details` JSONB (Decision 19) to render human-readable descriptions per type.
 
-### Milestone 10 — Critical Automated Tests (est. 1 hour) ⏳ PENDING
-**Purpose:** Verify the server-side rules the README explicitly requires, **before** deployment. A deployed app that breaks the rules is worse than an undeployed app — testing before deploy prevents embarrassing public bugs.
+### Milestone 10 — Critical Automated Tests (est. 1 hour) ✅ COMPLETE
+**Purpose:** Verify all server-side rules against a real PostgreSQL test database before deployment. Testing before deploy prevents embarrassing public bugs. **All 13 test suites must pass before Milestone 11 can begin.**
 
-**Test stack:** Vitest + Supertest against a real PostgreSQL test database (Supabase dev project; migrations + seed run before tests, dropped after).
+**Prerequisite:** A dedicated test PostgreSQL database must be available (Supabase dev project, local PostgreSQL, or any Postgres reachable via DATABASE_URL). Do not use the development database.
 
-**Test checklist (one suite per row, README requirement in parentheses):**
+**What to do — ordered steps:**
+
+1. **Set test DB connection.** Add `DATABASE_URL` to `.env` pointing to a dedicated test database (not the dev DB). Example: `DATABASE_URL=postgresql://user:password@host:port/dbname?sslmode=disable`
+
+2. **Run migrations against test DB.**
+   ```bash
+   npx prisma migrate deploy
+   ```
+   This applies all Prisma migrations to the test database.
+
+3. **Seed the test database.**
+   ```bash
+   node prisma/seed.js
+   ```
+   This populates the test DB with the 3 demo users (1 manager, 2 waiters), 6 menu items, 7 orders in every status, order lines, alerts, notes, etc.
+
+4. **Run the Vitest + Supertest suite.**
+   ```bash
+   npm test
+   ```
+   Tests run serially (`pool: forks`, `singleFork: true`) to avoid connection exhaustion on free-tier Postgres. All 13 test suites must pass.
+
+5. **Reset the test database when done** (to keep the repo clean).
+   ```bash
+   npx prisma migrate reset --preview-feature --skip-seed
+   ```
+   Or: `prisma migrate reset` to drop the test DB entirely.
+
+**13 test suites to implement** (each maps to a row in the checklist, README requirement in parentheses):
+
+| # | Test Suite | Target |
+|---|------------|--------|
+| 1 | Login: valid creds return 200 + user; invalid returns 401; missing fields return 400 | Goal 1 |
+| 2 | `GET /me` with no cookie returns 401; with valid cookie returns 200 + user | Goal 1 |
+| 3 | AuthZ matrix: every protected route, four roles (manager, primary waiter, collaborator, unrelated waiter) — assert correct 200/403/404/409 per the authZ matrix | Goal 1 |
+| 4 | Order state machine: walk every valid transition; attempt every invalid transition (PREPARING→CANCELLED, PLACED→READY backward, post-terminal moves) — assert 409 with `INVALID_TRANSITION` and human-readable message | Goal 4 |
+| 5 | Cancellation cutoff: cancel while PLACED/ACCEPTED succeeds; while PREPARING returns 409 with explanatory message | Goal 4 |
+| 6 | Line void: succeed with required reason; reject missing reason (400); reject when order is SERVED/CANCELLED (409); reject when line already VOID | Goal 4 |
+| 7 | Historical pricing: create line, change menu price, fetch order, assert line total reflects snapshot not current price | Goal 3 |
+| 8 | Immutable history: `PATCH /history/:entryId`, `DELETE /history/:entryId`, `PUT /notes/:noteId`, `DELETE /notes/:noteId` all return 405 or 404 — no such routes exist | Goal 9 |
+| 9 | Bulk update: submit 3 items where one has negative price, assert 2 succeeded + 1 rejected with reason | Goal 7 |
+| 10 | Order search/filter/sort/pagination: query with each filter, each sort direction, page=2 with limit=5; assert total + page contents; manager vs waiter scope; archived excluded from default | Goal 6 |
+| 11 | Alerts: order > threshold shows in alerts; dismiss removes it; advance clock past threshold; it reappears; transition to READY/SERVED/CANCELLED removes it permanently | Goal 10 |
+| 12 | Dashboard: each metric against seed data; revenue counts ACTIVE lines only; status/waiter breakdowns correct; 14-day chart has 14 entries with zero-fill | Goal 8 |
+| 13 | CSV export: response has `text/csv` content-type, filename matches `orders-YYYY-MM-DD.csv`, every expected column present, voided lines included and marked, totals exclude voided | Goal 7 |
+
+**Acceptance criteria for M10 completion:**
+- All 13 test suites pass when run against the test DB via `npm test`
+- Tests complete in <30 seconds (the `singleFork` pool ensures this)
+- `docs/plan.md` Milestone 10 status updated to ✅
+- `tests/README.md` updated if the DB workflow changes
+- `docs/ai-prompts.md` records any meaningful Claude prompts used to implement the test suites
+- `docs/architecture.md` updated if any new routes/schemas were added
+
+**Notes:**
+- The test harness (`vitest.config.js`, `setup.js`, `singleFork` pool) is already in place — M10 only needs to add the 13 test suite files and any helper utilities.
+- If `DATABASE_URL` is already set in `.env` from prior work, verify it points to a **dedicated test database**, not the dev one.
+- Tests are deterministic because the seed data is the same used in development.
 
 | # | Test | README target |
 |---|------|---------------|
@@ -213,22 +270,78 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 **Goal:** 13 test files, ~30-50 test cases total, run in <30 seconds. Run locally before deploying.
 
 ### Milestone 11 — Deployment + Smoke Test (est. 0.5 hour) ⏳ PENDING
+**Prerequisite:** Milestone 10 must be ✅ (all 13 test suites pass locally against the test DB).
+
 **Requirements satisfied:**
 - README "Host it for free" — live URL on free tiers
 - README "Seeded with enough demo data to show the system doing something"
 - README "Connection strings, keys and passwords kept in environment variables"
 - README "Note in SUBMISSION.md if yours does" (sleep behavior)
 
-**Steps:**
-1. Create Supabase production project
-2. `prisma migrate deploy` against production
-3. `node prisma/seed.js` against production
-4. Create Render service, set env vars (`DATABASE_URL`, `JWT_SECRET`, `ALERT_THRESHOLD_MINUTES`, `APP_TIMEZONE`, `FRONTEND_ORIGIN`)
-5. Deploy backend
-6. Create Vercel project, set `VITE_API_BASE_URL` to backend URL
-7. Deploy frontend
-8. Smoke test: log in as each demo user, walk through every Goal 1–10 feature, verify
-9. Record any host quirks (sleep behavior, cold-start time) for SUBMISSION.md
+**What to do — ordered steps:**
+
+1. **Create Supabase production project** (free tier).
+   - Go to https://supabase.com, create new project.
+   - Note the project URL and connection string (`postgresql://postgres:password@db.<ref>.supabase.co:5432/postgres`).
+
+2. **Run Prisma migrations against production.**
+   ```bash
+   DATABASE_URL=<production-connection-string> npx prisma migrate deploy
+   ```
+
+3. **Seed the production database.**
+   ```bash
+   DATABASE_URL=<production-connection-string> node prisma/seed.js
+   ```
+   This creates the 3 demo users (manager@demo.com / password123, waiter1@demo.com / password123, waiter2@demo.com / password123), 6 menu items, and demo orders.
+
+4. **Create Render service for backend.**
+   - Go to https://render.com, create new Web Service from this repo.
+   - Root directory: `backend/`
+   - Build command: `npm install && npx prisma generate`
+   - Start command: `node src/index.js`
+   - Set environment variables:
+     - `DATABASE_URL` = production Supabase connection string
+     - `JWT_SECRET` = generate a strong random string (e.g., `openssl rand -base64 32`)
+     - `ALERT_THRESHOLD_MINUTES` = `30` (or your preferred threshold)
+     - `APP_TIMEZONE` = `UTC` (or your local timezone, e.g., `America/New_York`)
+     - `FRONTEND_ORIGIN` = the Vercel frontend URL (get this after step 6)
+   - Deploy and note the backend URL (e.g., `https://restaurant-orders-api.onrender.com`).
+
+5. **Update Supabase CORS / allowlist** if needed for the Render backend URL.
+
+6. **Create Vercel project for frontend.**
+   - Go to https://vercel.com, import this repo.
+   - Root directory: `frontend/`
+   - Framework preset: Vite
+   - Build command: `npm run build`
+   - Output directory: `dist`
+   - Set environment variable:
+     - `VITE_API_BASE_URL` = backend URL from step 4 (e.g., `https://restaurant-orders-api.onrender.com`)
+   - Deploy and note the frontend URL (e.g., `https://restaurant-orders.vercel.app`).
+
+7. **Wire frontend URL back to backend.**
+   - Go back to Render service → Environment → set `FRONTEND_ORIGIN` = frontend URL from step 6.
+   - Redeploy backend.
+
+8. **Smoke test end-to-end.**
+   - Open the frontend URL.
+   - Log in as **manager@demo.com** / `password123` → verify: Menu management, Dashboard, Alerts, CSV export.
+   - Log in as **waiter1@demo.com** / `password123` → verify: Create order, Order detail, Status transitions, Line void, Collaborators, History, Notes.
+   - Log in as **waiter2@demo.com** / `password123` → verify: Collaborator access to shared orders.
+   - Walk through **all 10 Goals** from the README.
+
+9. **Record host quirks for SUBMISSION.md.**
+   - Render free tier: spins down after 15 min inactivity, cold start ~30–60s.
+   - Supabase free tier: pauses after 1 week inactivity (or check current policy).
+   - Vercel free tier: cold starts negligible.
+
+**Acceptance criteria for M11 completion:**
+- Live frontend URL accessible and functional
+- All 10 Goals demonstrable with demo credentials
+- Environment variables set only in platform dashboards (no secrets in repo)
+- `SUBMISSION.md` Links section filled with live URLs and demo credentials
+- `docs/plan.md` Milestone 11 status updated to ✅
 
 ### Milestone 12 — Pre-Submission Verification (est. 0.25 hour) ⏳ PENDING
 **Requirements satisfied:** README "How to submit" + "Use git properly" + "What you must commit"
@@ -359,6 +472,7 @@ These rules apply from **Milestone 5 through the final milestone** (M13). They a
   - **How it was verified** — the test, command, or inspection that confirmed the fix
 - **Do not invent bugs.** Do not record trivial transient errors (one-time network blips, typos caught by the next test run, dev-only environment issues).
 - The log is for **meaningful** bugs and implementation issues — those that influenced a design decision, blocked a milestone, or revealed a non-obvious interaction in the system.
+- **From M10 onward, maintain `docs/bugs.md` as the running bug/issue log.** For every significant bug or test/infrastructure issue, record the observed behavior, confirmed root cause, countermeasure, reason for the countermeasure, verification, and status. Do not fabricate issues. After a Claude Code restart, read `docs/bugs.md` before continuing. M3 bug tracking can be reconstructed later.
 
 ### Milestone-completion checklist (mandatory, every milestone M5–M13)
 
@@ -416,7 +530,7 @@ These rules exist so that a reviewer — or a future session — can recover the
 | 7. Dashboard + Alerts + CSV | 2h | ~1h | ✅ |
 | 8. Frontend: Manager | 1.5h | ~1h | ✅ |
 | 9. Frontend: Waiter | 1.5h | ~1h | ✅ |
-| 10. Critical Tests | 1h | — | ⏳ |
+| 10. Critical Tests | 1h | ~2.5h | ✅ |
 | 11. Deploy + Smoke | 0.5h | — | ⏳ |
 | 12. Pre-Submission Check | 0.25h | — | ⏳ |
 | 13. Docs Final | 0.25h | — | ⏳ |

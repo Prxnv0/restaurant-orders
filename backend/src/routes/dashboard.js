@@ -68,16 +68,17 @@ router.get('/', auth, requireRole('MANAGER'), async (req, res, next) => {
     });
 
     // ── Revenue today (ACTIVE lines only, orders created today) ────────────
-    const revenueResult = await prisma.orderLine.aggregate({
+    const revenueLines = await prisma.orderLine.findMany({
       where: {
         status: 'ACTIVE',
         order: { createdAt: { gte: todayStartUTC } },
       },
-      _sum: { unitPrice: true },
+      select: { quantity: true, unitPrice: true },
     });
-    const revenueToday = revenueResult._sum.unitPrice
-      ? Number(revenueResult._sum.unitPrice)
-      : 0;
+    const revenueToday = revenueLines.reduce(
+      (sum, l) => sum + Number(l.unitPrice) * l.quantity,
+      0
+    );
 
     // ── Status breakdown (non-archived, non-cancelled? per design) ───────
     // Use all non-archived orders across all time for the breakdown.

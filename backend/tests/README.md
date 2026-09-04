@@ -1,36 +1,79 @@
-# Backend tests
+# Test Suite — Milestone 10
 
-Vitest + Supertest. Run with `npm test`.
+This directory holds integration tests that run against a real PostgreSQL
+database using Supertest + Vitest. The tests cover all 10 application goals
+with real HTTP requests, not mocked units.
 
-## What's covered now (M3)
+## Setup (run once before `npm test`)
 
-`menu-validator.test.js` — 18 cases. Pure Joi schema validation, no DB:
+### 1. Set DATABASE_URL
 
-- `createMenuItem`: name required / empty / too long; price required / negative / zero; is_available optional
-- `updateMenuItem`: partial updates; archive toggle; empty body rejected; negative price rejected
-- `bulkUpdate`: at least one of price / is_available; item_ids must be UUIDs and non-empty; max 500 ids
+Add `DATABASE_URL` to `backend/.env` pointing to a **dedicated test database**
+(not your dev or production DB).
 
-## What's coming (M10)
+```env
+DATABASE_URL="postgresql://user:password@host:port/dbname?sslmode=disable"
+```
 
-The full integration suite per `docs/plan.md` M10:
+If you only have one Supabase project, create a separate database in it for
+testing, or use a local PostgreSQL instance.
 
-- Login / `/me` / AuthZ matrix
-- Order state machine + cancellation cutoff
-- Line void rules
-- Historical pricing
-- Immutable history (no PUT/PATCH/DELETE on history or notes)
-- Bulk update with a real DB (succeeded / rejected shape)
-- Order search / filter / sort / pagination
-- Alerts (threshold, dismiss, reappear, status-resolved)
-- Dashboard metrics
-- CSV export
+### 2. Run migrations against the test DB
 
-These need a real PostgreSQL test database. The intended workflow:
+```bash
+cd backend
+npx prisma migrate deploy
+```
 
-1. Set `DATABASE_URL` in `.env` to a dedicated test database (NOT the dev one)
-2. `npx prisma migrate deploy` against it
-3. `node prisma/seed.js` against it
-4. `npm test` — tests run serially (single fork) so the seed state is deterministic
-5. `prisma migrate reset` to drop the test DB when done
+### 3. Seed the test DB
 
-The test harness (`tests/setup.js`, `vitest.config.js`, `singleFork: true`) is already in place — M10 only needs to add the suites and helpers.
+```bash
+node prisma/seed.js
+```
+
+### 4. Run the test suite
+
+```bash
+cd backend
+npm test
+```
+
+All 13 test suites run serially in a single fork to avoid connection
+exhaustion on free-tier Supabase (max 60 connections). Expected runtime: <30 s.
+
+### 5. Reset test DB when done
+
+To wipe the test database between runs (optional, but keeps the DB clean):
+
+```bash
+npx prisma migrate reset --preview-feature --skip-seed
+```
+
+Or drop the test DB entirely and re-run steps 2-4.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `Error: No Database Connection` | Set `DATABASE_URL` in `backend/.env` |
+| `PrismaClientInitializationError` | Run `npx prisma migrate deploy` and `node prisma/seed.js` |
+| Connection exhaustion | Ensure `singleFork: true` in `vitest.config.js` — never run tests in parallel |
+| Tests pass but alerts are wrong | Seed data uses real clock; alerts require the test DB's `now` to be ≥ 30 min after the seed orders' `createdAt` |
+
+## Test Suites
+
+| # | File | Goal tested |
+|---|------|-------------|
+| 1 | `01-login.test.js` | 1 — Login |
+| 2 | `02-auth-me.test.js` | 1 — GET /me |
+| 3 | `03-authz-matrix.test.js` | 1 — Role-based access |
+| 4 | `04-state-machine.test.js` | 4 — Status transitions |
+| 5 | `05-cancellation-cutoff.test.js` | 4 — Cancellation rules |
+| 6 | `06-void-line.test.js` | 4 — Line void |
+| 7 | `07-historical-pricing.test.js` | 3 — Price snapshots |
+| 8 | `08-immutable-history.test.js` | 9 — No edit/delete routes |
+| 9 | `09-bulk-update.test.js` | 7 — Per-item bulk results |
+| 10 | `10-order-search.test.js` | 6 — Search/filter/sort/page |
+| 11 | `11-alerts.test.js` | 10 — Alert lifecycle |
+| 12 | `12-dashboard.test.js` | 8 — Dashboard metrics |
+| 13 | `13-csv-export.test.js` | 7 — CSV format |

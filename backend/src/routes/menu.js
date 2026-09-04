@@ -19,12 +19,13 @@ const router = express.Router();
 
 // ── helpers ──────────────────────────────────────────────────────────
 function joiCheck(schema, value) {
-  const { error } = schema.validate(value, { abortEarly: false });
+  const { error, value: validated } = schema.validate(value, { abortEarly: false });
   if (error) {
     throw AppError.BAD_REQUEST(
       error.details.map((d) => d.message).join('; ')
     );
   }
+  return validated;
 }
 
 // ── GET /api/menu ────────────────────────────────────────────────────
@@ -73,7 +74,7 @@ router.get('/:id', auth, async (req, res, next) => {
 // ── POST /api/menu (manager only) ───────────────────────────────────
 router.post('/', auth, requireRole('MANAGER'), async (req, res, next) => {
   try {
-    const value = await joiCheck(createMenuItem, req.body);
+    const value = joiCheck(createMenuItem, req.body);
     const item = await prisma.menuItem.create({
       data: {
         name: value.name,
@@ -119,7 +120,7 @@ router.patch('/:id', auth, requireRole('MANAGER'), async (req, res, next) => {
 // succeeded and what was rejected and why.
 router.post('/bulk-update', auth, requireRole('MANAGER'), async (req, res, next) => {
   try {
-    const value = await joiCheck(bulkUpdate, req.body);
+    const value = joiCheck(bulkUpdate, req.body);
     const { item_ids, price, is_available } = value;
 
     // Build the per-item data
