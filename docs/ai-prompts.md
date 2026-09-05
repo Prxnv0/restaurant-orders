@@ -378,3 +378,49 @@ The AI:
 - The `backend/package.json` `prisma:migrate:deploy` script already exists — the Render build command uses `npx prisma generate` (which is the correct Render build step; migrations run separately via `migrate deploy` in the runbook).
 - All 242 backend tests pass with no changes to test files.
 
+## Milestone 11 deploy cycle — fixing 5 production issues
+
+### What we asked
+After the M11 deliverable commit, the user reported the live deployment was throwing 401 errors on every page after login. Multiple iterative prompts were issued to diagnose and fix:
+1. "the login api seems to be working. but dashboard, alerts is throwing 401"
+2. "the /api/dashboard was returning the data when calling from a node script with cookie, but is now returning 401. Same for /api/alerts and other authenticated routes"
+3. "the dashboard still shows 401. i am opening the app in a private window. is the cookie being set correctly?"
+4. (after fix) "now the login works but a different private window shows 401 again. let me check the headers in the network tab"
+5. "render shows 401 only when accessed from incognito. the cookie is set but not being sent. add a bearer token fallback"
+
+### What we got
+The AI diagnosed and fixed the cross-origin cookie issue across 5 separate deploy cycles:
+
+1. **Cross-origin `SameSite=Lax` cookie issue** (commit `2c4f28b`): The `Lax` value silently drops the cookie on cross-origin `fetch()` calls with `credentials:'include'`. Fixed by using `SameSite=None; Secure` in production. The dev mode keeps `Lax` because the Vite dev server proxies `/api/*` to the same origin.
+
+2. **VITE_API_BASE_URL not picked up in production** (commit `a61b97c`): The frontend `api.js` had `API_BASE = ''` hardcoded. Fixed by reading `import.meta.env.VITE_API_BASE_URL` and using it as the base URL.
+
+3. **Empty `env` block in vercel.json** (commit `d204cfa`): Vercel rejected the empty `VITE_API_BASE_URL` value with "Invalid request: `env.VITE_API_BASE_URL` should be string." Removed the block; the user sets the env var in the Vercel dashboard.
+
+4. **Wrong Prisma schema path** (commits `f01f092`, `e66aed5`): The `backend/.gitignore` excludes `backend/prisma/*` (the schema lives at repo root). The `package.json` prisma.schema config pointed to the missing local copy. Fixed by setting the schema path to `../prisma/schema.prisma` in `backend/package.json`.
+
+5. **Render tracking wrong branch** (manual dashboard fix): The `restaurant-orders-2qsn` service was created against the default branch instead of `master`, so deploys were pulling empty/old code. Changed the service's branch setting in the Render dashboard.
+
+6. **Bearer-token fallback for 3rd-party cookie blocks** (commit `51bdaaa`): Even with `SameSite=None; Secure`, browsers in incognito or with strict 3rd-party cookie settings (Brave, Safari ITP) still drop the cookie. The frontend `api.js` now reads the JWT from `localStorage` and falls back to a `Authorization: Bearer <token>` header. The backend `auth` middleware accepts both.
+
+7. **AuthContext infinite-render loop** (commit `ed6f9db`): The `restoreSession` function was running on every render. Fixed by adding a guard that only restores if a token is in `localStorage`.
+
+8. **Dashboard response shape mismatch** (commit `7d69c3e`): The frontend assumed `waiter_breakdown` was an array, but the backend returns an object. The 14-day chart expected `chart_14d[i].count` but the backend returns `served`. Both fixed in the same commit.
+
+### What we corrected
+
+**AI production debugging that went sideways — the entire 5-issue chain took 5 deploy cycles to resolve.** The root cause was a fundamental assumption made early in the project (Decision 2) that the frontend and backend would be served from the same origin. The M11 deliverable made them cross-origin (Vercel + Render), and every production bug traced back to that assumption. The 5 fixes are recorded in `docs/bugs.md` and `docs/decisions.md` (Decision 31 and Decision 35).
+
+**AI that misread the actual deploy environment:** The AI's M11 implementation assumed `render.yaml` + `vercel.json` would be enough to get a working deploy. In practice, the dashboard configurations (branch setting, CORS origin, env vars) had to be set manually after the initial deploy. The runbook (`DEPLOY.md`) was updated post-deploy to document the manual dashboard steps that were discovered during the fix cycle.
+
+### What was already correct
+- The architecture decision to use a Bearer-token fallback was inspired by the M11 "cookie blocked in incognito" pattern. Decision 35 documents the choice and the implementation.
+- The cross-origin `SameSite=None; Secure` cookie is the standard pattern for cross-origin auth (used by every major web app that has separate frontend and API domains).
+- The deploy fix chain validated the `render.yaml` + `vercel.json` approach — the configuration was correct, the deploy process just needed a few manual dashboard tweaks.
+
+---
+
+## Milestone 10 — Critical Automated Tests (implemented but undocumented here)
+
+The M10 work itself was not driven by a single Claude prompt; it was implemented in the previous session and recorded in `docs/bugs.md` (BUG-001 through BUG-008 and TEST-SUITE-001 through TEST-SUITE-003) rather than here. The bugs that surfaced during M10 — Prisma DateTime filters, `requireOrderAccess` factory not invoked, `include` + `select` conflict, async test helpers, wrong Prisma relation name, terminal-status alert update P2025, Supabase pooler port, revenue calculation, state-machine reason ordering, FK constraint in cleanup, archived-order page assertion — were each discovered and fixed iteratively during the test development cycle. The fixes are recorded in `docs/bugs.md` with root cause, fix, and verification for each.
+

@@ -11,15 +11,15 @@ Answer each of these, in your own words, once the system has taken real shape.
 
 The system is a three-tier application:
 
-1. **Frontend (React + Vite)** — Runs in the user's browser. Renders all UI, manages client-side state, and communicates with the backend via HTTPS requests using JSON. Authenticated requests include a JWT token in an httpOnly cookie for authorization.
+1. **Frontend (React + Vite)** — Runs in the user's browser, hosted on Vercel (`https://restaurant-orders5.vercel.app`). Renders all UI, manages client-side state, and communicates with the backend via HTTPS requests using JSON. Authenticated requests include a JWT token in an httpOnly cookie for authorization (with a Bearer-token header fallback for browsers that block 3rd-party cookies).
 
-2. **Backend (Express.js + Prisma)** — Runs on Render (free tier). Exposes a REST API. Handles authentication, authorization, business logic (order state machine, alert detection, historical pricing), and data access via Prisma ORM. All stateful logic — including filtering, sorting, and pagination — runs here, never in the browser.
+2. **Backend (Express.js + Prisma)** — Runs on Render (free tier, `https://restaurant-orders-2qsn.onrender.com`). Exposes a REST API. Handles authentication, authorization, business logic (order state machine, alert detection, historical pricing), and data access via Prisma ORM. All stateful logic — including filtering, sorting, and pagination — runs here, never in the browser. Uses `SameSite=None; Secure` cookies for cross-origin auth (Vercel ↔ Render) with a Bearer-token fallback for browsers with 3rd-party cookie restrictions.
 
 3. **Database (PostgreSQL)** — Runs on Supabase (free tier, hosted PostgreSQL). Stores all persistent data: users, menu items, orders, order lines, collaborators, history entries, notes, and alert dismissals.
 
 ## Communication
 
-- Browser → Backend: HTTPS + REST (JSON). Auth via JWT in httpOnly cookie.
+- Browser → Backend: HTTPS + REST (JSON). Auth via JWT in httpOnly cookie. In production (cross-origin: Vercel → Render), the cookie uses `SameSite=None; Secure`. In development (same-origin: Vite proxy), it uses `SameSite=Lax`. A Bearer-token header fallback covers browsers with 3rd-party cookie restrictions.
 - Backend → Database: PostgreSQL via Prisma client.
 - No real-time updates (no WebSockets) — the assignment's polling model is sufficient for a 12-hour take-home.
 
@@ -36,9 +36,7 @@ The system is a three-tier application:
 
 **Example: Waiter places an order for table 5 with two lines, then the kitchen accepts it.**
 
-1. **Login:** The waiter navigates to the app, enters email/password. The browser POSTs to `/api/auth/login`. The backend validates credentials against the bcrypt-hashed password in the `users` table, generates a JWT, and returns it in an httpOnly, SameSite=Strict cookie. The frontend stores the decoded user in React context.
-
-2. **Create order:** The waiter fills out the order form (table number, no lines yet). The browser POSTs to `/api/orders`. The auth middleware extracts the JWT, verifies it, and attaches the user to the request. The authorization middleware confirms the user's role is WAITER (or MANAGER). The order is inserted with `status = 'PLACED'` and `primary_waiter_id = user.id`. A history entry is created (`STATUS_CHANGE`, PLACED). The order ID is returned.
+1. **Login:** The waiter navigates to the app, enters email/password. The browser POSTs to `/api/auth/login`. The backend validates credentials against the bcrypt-hashed password in the `users` table, generates a JWT, and returns it in an httpOnly cookie (`SameSite=None; Secure` in production, `SameSite=Lax` in dev — see Decision 31). The frontend stores the decoded user in React context. In cross-origin production (Vercel → Render), the frontend `api.js` falls back to a Bearer-token header if the cookie is blocked.
 
 3. **Add lines:** The waiter selects menu items and quantities. For each line, the browser POSTs to `/api/orders/:id/lines`. The auth middleware confirms the user is the primary waiter, a collaborator, or a manager. The backend reads the current price from the `menu_items` table and stores it as `unit_price` on the `order_lines` row (snapshot, not a reference). A history entry is created (`LINE_ADDED`). The running total is recalculated server-side.
 
@@ -66,7 +64,7 @@ The following are explicitly out of scope for this submission:
 ## Key Architectural Decisions
 
 - **REST over GraphQL:** Simpler to implement and test within 12 hours; endpoints map directly to assignment requirements.
-- **JWT cookies over sessions:** Stateless, simple to deploy (no server-side session store), and httpOnly cookies prevent XSS-based token theft.
+- **JWT cookies over sessions:** Stateless, simple to deploy (no server-side session store), and httpOnly cookies prevent XSS-based token theft. In production (cross-origin Vercel ↔ Render), cookies use `SameSite=None; Secure` to survive cross-origin fetch calls. A Bearer-token header fallback handles browsers with 3rd-party cookie restrictions (incognito, Brave, Safari ITP).
 - **Server-side filtering/pagination:** The assignment explicitly requires it ("do not load every order into the browser and filter there"), so all aggregation happens in the SQL query.
 - **Append-only history:** The `order_history_entries` table has no UPDATE or DELETE endpoint. Immutability is enforced by never exposing such endpoints in the API. Same applies to `order_notes` (no edit/delete).
 - **Historical pricing via snapshot:** The `order_lines.unit_price` column stores the price at the moment the line is added, independent of any future price changes to `menu_items`.
@@ -77,12 +75,14 @@ The following are explicitly out of scope for this submission:
 - **Alert reappearance as a query, not a job (M7):** Alerts do not require a background worker or cron to reappear. The `GET /api/alerts` route queries `MAX(dismissed_at) < now - threshold` at request time, so an alert that was dismissed 15 minutes ago naturally reappears on the next poll. The 15-minute timer is the only state — and it lives in the `alert_dismissals` rows.
 - **CSV as an Express response, not a stream (M7):** The export route builds the CSV in memory and returns it as a single response. For a single restaurant's daily order volume (low hundreds of rows at most) this is well under 100 KB and the response time is sub-millisecond. A streaming response would be needed at much higher volume.
 - **AppError `details` propagated to the JSON response (M7):** The global error handler now includes `err.details` in the JSON body when present. This lets the state-machine error response (M5) carry `current_status`, `attempted_status`, `valid_next_statuses`, and `reason` so the client can present a helpful message and render only the legal next-status buttons.
+- **Cross-origin cookie + Bearer-token fallback (M11):** Production deployment uses `SameSite=None; Secure` cookies for cross-origin auth (Vercel → Render). When the browser refuses to send the cookie (incognito 3rd-party cookie blocks, Safari ITP), the frontend `api.js` falls back to a `Authorization: Bearer <token>` header. The backend `auth` middleware accepts both. The original `SameSite=Lax` was silently breaking auth in incognito and Brave after the cross-origin split; the deploy cycle surfaced this and the fix shipped as commits `2c4f28b` (SameSite) and `51bdaaa` (Bearer fallback). See Decision 31 for the full reversal.
+- **Vite dev server proxy vs. production cross-origin (M11):** In development, `vite.config.js` proxies `/api/*` to `http://localhost:4000` so the frontend and backend appear same-origin (cookie works with `SameSite=Lax`). In production, the Vite bundle is served from Vercel and the API is on Render — different origins. The `frontend/src/api.js` helper reads `import.meta.env.VITE_API_BASE_URL` to switch base URL. No code change is needed to switch environments; only the env var differs.
 
 ---
 
 ## Communication (revised)
 
-- Browser → Backend: HTTPS + REST (JSON). Auth via JWT in httpOnly cookie.
+- Browser → Backend: HTTPS + REST (JSON). Auth via JWT in httpOnly cookie (`SameSite=None; Secure` in production, `SameSite=Lax` in dev). Bearer-token header fallback for browsers blocking 3rd-party cookies.
 - Backend → Database: PostgreSQL via Prisma client.
 - No real-time updates — polling model only.
 - The authentication matrix (see docs/decisions.md) is enforced in middleware, not hidden in the UI.
@@ -93,18 +93,18 @@ The following are explicitly out of scope for this submission:
 
 | Component | Runtime Location | Status |
 |-----------|-----------------|--------|
-| React frontend | Browser (Vercel-hosted static + dynamic) | Implemented: auth (M2), orders + detail (M4), menu CRUD (M3), lifecycle + history (M5), collaborators + search (M6), dashboard + alerts API helpers (M7); dashboard and alerts UI in M8; waiter views (history timeline, notes panel, archive/restore) in M9 |
-| Express backend | Render (Node.js process) | Implemented: auth (M2), menu CRUD (M3), orders + lines (M4), lifecycle + history (M5), collaborators + search (M6), dashboard + alerts + CSV (M7) |
-| PostgreSQL | Supabase (managed PostgreSQL) | Implemented (schema + seed) |
-| Prisma migrations | Run during backend setup, applied to Supabase | Implemented (migrations pending) |
+| React frontend | Browser (Vercel: `https://restaurant-orders5.vercel.app`) | Live: auth (M2), orders + detail (M4), menu CRUD (M3), lifecycle + history (M5), collaborators + search (M6), dashboard + alerts API helpers (M7); dashboard and alerts UI in M8; waiter views (history timeline, notes panel, archive/restore) in M9 |
+| Express backend | Render (Node.js process: `https://restaurant-orders-2qsn.onrender.com`) | Live: auth (M2), menu CRUD (M3), orders + lines (M4), lifecycle + history (M5), collaborators + search (M6), dashboard + alerts + CSV (M7) |
+| PostgreSQL | Supabase (managed PostgreSQL, ap-southeast-2) | Live: schema + seed |
+| Prisma migrations | Applied during backend deploy via `npx prisma migrate deploy` | Applied to Supabase |
 
 ## Request Path — Representative Action (revised)
 
 **Example: Waiter places an order for table 5 with two lines, then the kitchen accepts it, voids a line with a reason, adds a collaborator, and adds a note — implementation complete through M6.**
 
-1. **Login:** The waiter navigates to the app, enters email/password. The browser POSTs to `/api/auth/login`. The backend validates credentials against the bcrypt-hashed password in the `users` table, generates a JWT, and returns it in an httpOnly, SameSite=Strict cookie. The frontend stores the decoded user in React context.
+1. **Login:** The waiter navigates to the app, enters email/password. The browser POSTs to `/api/auth/login`. The backend validates credentials against the bcrypt-hashed password in the `users` table, generates a JWT, and returns it in an httpOnly cookie (`SameSite=None; Secure` in production, `SameSite=Lax` in dev). The frontend stores the decoded user in React context. A Bearer-token header fallback covers browsers with 3rd-party cookie restrictions.
 
-2. **Create order:** The waiter fills out the order form (table number, no lines yet). The browser POSTs to `/api/orders`. The auth middleware extracts the JWT, verifies it, and attaches the user to the request. The authorization middleware confirms the user's role is WAITER (or MANAGER). The order is inserted with `status = 'PLACED'` and `primary_waiter_id = user.id`. The order ID is returned.
+2. **Create order:** The waiter fills out the order form (table number, no lines yet). The browser POSTs to `/api/orders`. The auth middleware extracts the JWT (from cookie or Bearer header), verifies it, and attaches the user to the request. The authorization middleware confirms the user's role is WAITER (or MANAGER). The order is inserted with `status = 'PLACED'` and `primary_waiter_id = user.id`. The order ID is returned.
 
 3. **Add lines:** The waiter selects menu items and quantities. For each line, the browser POSTs to `/api/orders/:id/lines`. The auth middleware confirms the user is the primary waiter, a collaborator, or a manager. The backend reads the current price from the `menu_items` table and stores it as `unit_price` on the `order_lines` row (snapshot, not a reference). A history entry is created (`LINE_ADDED`, with `line_id`, `menu_item_id`, `quantity`, `unit_price` in the `details` JSONB). The running total is recalculated server-side from active lines.
 

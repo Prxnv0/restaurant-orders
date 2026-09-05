@@ -252,3 +252,33 @@ Additional decisions will be recorded here as the project develops. Examples tha
 - **Why:** When `frontend` and `backend` are on different subdomains/domains (Vercel app + Render API), the browser treats them as cross-origin. The combination of `credentials: 'include'` in the fetch wrapper + the cookie's `SameSite=Lax` causes the browser to refuse to send the cookie on subsequent requests. `SameSite=None` is the only value that works for this topology, and it requires `Secure: true` (which we already have in production over HTTPS). The dev mode keeps `Lax` because the Vite dev server proxies `/api/*` to the same origin, so cross-origin isn't a concern locally.
 - **What this cost:** A few deploy-debug cycles during M11 (login appeared to work — 200 OK with the cookie set — but every subsequent request returned 401). The diagnosis was a 5-minute `curl` exercise: login worked from the same shell session because the cookie was in the curl jar, but the browser was discarding it on cross-origin requests. The `csrf` protection discussion in Decision 2 is unchanged in spirit (we still don't need a CSRF library because the cookie is `httpOnly` and `Secure`, and we still have the same protections against same-origin XHR); only the `SameSite` value changed.
 - **How to apply:** Any future change to the cookie options must keep `SameSite` consistent with the deployment topology: dev = same-origin proxy = `Lax`; prod = cross-origin = `None + Secure`. A test that adds a third deployable host (e.g. a different preview environment) would need a third config branch.
+
+## Decision 32 — Supabase Session Pooler (port 5432) vs Transaction Pooler (port 6543) (M10)
+
+- **Chose:** Connect the Prisma client to Supabase using the **Session Pooler port (5432)** in both development and test environments.
+- **Rejected:** Transaction Pooler port (6543) — Supabase's default recommended port for serverless/transaction-pooled workloads.
+- **Why:** Prisma's connection model uses long-lived session features (prepared statements, session state) that are incompatible with Supabase's Transaction Pooler. The Transaction Pooler is designed for short-lived transaction-per-request patterns typical of serverless functions — it resets state after each transaction, which Prisma relies on. The Session Pooler (a drop-in PostgreSQL replacement) handles Prisma's session semantics correctly. This was discovered when integration tests began hanging and throwing `ECONNREFUSED` and pool-exhaustion errors — switching the port resolved all of them.
+- **What this cost:** One misconfigured environment variable (`DATABASE_URL` pointing to port 6543 instead of 5432). Fixed in the test harness configuration; the production `DATABASE_URL` was already correct.
+
+## Decision 33 — Separate test database (M10)
+
+- **Chose:** Integration tests run against a dedicated test PostgreSQL database, separate from the development database.
+- **Rejected:** Running tests against the same database used for development (risking data pollution), or using an in-memory SQLite (dialect differences from the production Postgres).
+- **Why:** Tests modify data (create users, create orders, change statuses, void lines) — running them against a shared development database would corrupt the dev state. Supabase provides a free tier with enough capacity for a separate test project. The test DB is seeded fresh before each run (via `prisma migrate deploy` + `node prisma/seed.js`).
+- **What this cost:** An extra Supabase project to maintain. The runbook documents the setup steps clearly enough that re-seeding is a one-command operation.
+
+## Decision 34 — Per-suite test cleanup instead of transaction rollback (M10)
+
+- **Chose:** Each integration test suite cleans up its own test data by deleting the records it created (orders cascade-delete their lines, collaborators, history, notes; then menu items are deleted).
+- **Rejected:** Wrapping each test in a database transaction and rolling back at the end (a common pattern for unit tests). Supabase's transaction pooler is incompatible with Prisma's session model — transactions work at the Session Pooler port but the test environment uses a dedicated database anyway.
+- **Why:** With a dedicated test database, manual cleanup per suite is simpler and more explicit. Each test creates minimal, scoped test data (e.g. a single menu item with `tableNumber = 'SNAPSHOT'`). Cleanup queries that data by its unique identifier and deletes it. The seed data (3 demo users, 6 menu items) is preserved between test runs; only per-test data is removed.
+- **What this cost:** The Test 07 cleanup initially tried to delete a menu item that had active order lines, triggering an FK constraint violation. Fixed by deleting the order first (cascading to its lines), then deleting the menu item. See BUG-007 / TEST-SUITE-002 in `docs/bugs.md`.
+
+## Decision 35 — Bearer-token header fallback for browsers blocking 3rd-party cookies (M11)
+
+- **Chose:** When the browser refuses to send the auth cookie (3rd-party cookie restrictions in incognito, Brave, Safari ITP), the frontend `api.js` falls back to reading the JWT from `localStorage` and sending it as `Authorization: Bearer <token>` on each request.
+- **Rejected:** Requiring 3rd-party cookies to be enabled (would break many users), a separate token endpoint that returns the token in the response body (adds a second auth call), or server-side rendering with a server-side session (adds significant complexity).
+- **Why:** The incidence of 3rd-party cookie restrictions is significant enough (Brave, Safari ITP, Firefox total cookie protection, incognito mode on many browsers) that the app is effectively broken for these users without a fallback. The JWT is already stored in `localStorage` by the auth context — re-using it as a Bearer token is a minimal change that covers the full user population without requiring any user action.
+- **How it works:** The `AuthContext` saves the JWT to `localStorage` after login. `api.js` attempts the request with `credentials: 'include'` (cookie). On a 401 response, it retries with `Authorization: Bearer <token>` (from localStorage). The `auth` middleware on the backend accepts both — it tries the cookie first, then the Bearer header.
+- **What this cost:** One extra request in the worst case (401 then retry). In practice the cookie works for most users; the Bearer fallback is a rare path.
+
