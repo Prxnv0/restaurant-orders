@@ -98,10 +98,10 @@ export default function DashboardPage() {
             </tr>
           </thead>
           <tbody>
-            {waiter_breakdown.map((w) => (
-              <tr key={w.id}>
-                <td>{w.name}</td>
-                <td style={{ textAlign: 'right' }}>{w.orders_created}</td>
+            {Object.entries(waiter_breakdown).map(([name, count]) => (
+              <tr key={name}>
+                <td>{name}</td>
+                <td style={{ textAlign: 'right' }}>{count}</td>
               </tr>
             ))}
           </tbody>
@@ -123,7 +123,7 @@ export default function DashboardPage() {
             {chart_14d.map((day) => (
               <tr key={day.date}>
                 <td>{day.date}</td>
-                <td style={{ textAlign: 'right' }}>{day.orders}</td>
+                <td style={{ textAlign: 'right' }}>{day.served}</td>
                 <td style={{ textAlign: 'right' }}>{formatCurrency(day.revenue)}</td>
               </tr>
             ))}
