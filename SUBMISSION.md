@@ -4,8 +4,9 @@ Fill this in and commit it. This is the first file we open.
 
 ## Links
 
-- **GitHub repository:** <public repo URL>
-- **Live application:** <deployed URL — fill in after M11 deploy per DEPLOY.md>
+- **GitHub repository:** https://github.com/Prxnv0/restaurant-orders
+- **Live application (frontend):** https://restaurant-orders5.vercel.app
+- **Live backend API:** https://restaurant-orders-2qsn.onrender.com
 
 ## Notes for the reviewer
 
