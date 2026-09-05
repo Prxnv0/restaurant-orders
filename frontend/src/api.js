@@ -1,6 +1,6 @@
 // Frontend API client — thin wrapper around fetch.
 // Handles credentials, JSON parsing, error normalization, and 401 redirect.
-const API_BASE = ''; // Uses Vite proxy in dev, same-origin in prod
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''; // '' = dev proxy, real URL in prod
 
 class ApiError extends Error {
   constructor(message, status, code, body) {
