@@ -16,14 +16,16 @@ const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d';
 
-// Cookie options — httpOnly so the token can't be stolen by JS,
-// SameSite=Lax so it survives top-level navigations (needed for the
-// frontend → backend flow) while still blocking most CSRF.
+// Cookie options — httpOnly so the token can't be stolen by JS.
+// In production (cross-origin: Vercel frontend → Render backend), we need
+// SameSite=None + Secure for the cookie to be sent on fetch() requests with
+// credentials:'include'. In dev (same-origin via Vite proxy), Lax is enough.
 function cookieOptions() {
+  const isProduction = process.env.NODE_ENV === 'production';
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
   };
 }
@@ -86,7 +88,11 @@ router.post('/login', async (req, res, next) => {
 
 // ── POST /api/auth/logout ───────────────────────────────────────────
 router.post('/logout', (_req, res) => {
-  res.clearCookie('token', { httpOnly: true, sameSite: 'lax' });
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  });
   res.json({ ok: true });
 });
 
