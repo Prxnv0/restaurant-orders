@@ -8,13 +8,20 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Try to restore session from cookie on mount
+  // Try to restore session from localStorage token on mount.
+  // localStorage is sync so the token is available immediately.
   const restoreSession = useCallback(async () => {
+    // If there's no token in localStorage, skip the fetch and just stop loading
+    if (!getToken()) {
+      setLoading(false);
+      return;
+    }
     try {
       const { user } = await fetchMe();
       setUser(user);
     } catch (_) {
-      // Not logged in — that's fine, just leave user as null
+      // Token may be stale/invalid — clear it and treat as not logged in
+      clearToken();
     } finally {
       setLoading(false);
     }
