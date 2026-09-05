@@ -80,6 +80,7 @@ router.post('/login', async (req, res, next) => {
         name: user.name,
         role: user.role,
       },
+      token, // also return in body for localStorage fallback (incognito-safe)
     });
   } catch (err) {
     next(err);

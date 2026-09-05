@@ -7,7 +7,15 @@ const AppError = require('../utils/errors');
 const JWT_SECRET = process.env.JWT_SECRET;
 
 function authMiddleware(req, res, next) {
-  const token = req.cookies?.token;
+  // Try cookie first, then Authorization header (for clients that can't rely
+  // on cookies — e.g. browsers with 3rd-party cookie blocking in incognito).
+  let token = req.cookies?.token;
+  if (!token) {
+    const authHeader = req.headers.authorization || '';
+    if (authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7);
+    }
+  }
   if (!token) {
     return next(AppError.UNAUTHORIZED('Authentication required'));
   }

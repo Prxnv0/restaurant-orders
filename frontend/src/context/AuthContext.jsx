@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { login, logout, fetchMe } from '../api';
+import { login, logout, fetchMe, getToken, setToken, clearToken } from '../api';
 
 const AuthContext = createContext(null);
 
@@ -27,8 +27,10 @@ export function AuthProvider({ children }) {
   const handleLogin = async (email, password) => {
     setError(null);
     try {
-      const { user } = await login(email, password);
-      setUser(user);
+      const result = await login(email, password);
+      // Save token to localStorage so it survives incognito 3rd-party-cookie blocks
+      if (result.token) setToken(result.token);
+      setUser(result.user);
       return { ok: true };
     } catch (err) {
       const message = err.message || 'Login failed';
@@ -41,6 +43,7 @@ export function AuthProvider({ children }) {
     try {
       await logout();
     } finally {
+      clearToken();
       setUser(null);
     }
   };

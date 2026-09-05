@@ -2,6 +2,32 @@
 // Handles credentials, JSON parsing, error normalization, and 401 redirect.
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''; // '' = dev proxy, real URL in prod
 
+// ── Token helpers ─────────────────────────────────────────────────────
+// Use localStorage for the JWT so it works in incognito (3rd-party cookies
+// are blocked by default there). The httpOnly cookie is still set by the
+// server but the Authorization header is the primary auth mechanism.
+const TOKEN_KEY = 'token';
+
+export function getToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch (_) {
+    return null;
+  }
+}
+
+export function setToken(token) {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch (_) {}
+}
+
+export function clearToken() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch (_) {}
+}
+
 class ApiError extends Error {
   constructor(message, status, code, body) {
     super(message);
@@ -13,12 +39,15 @@ class ApiError extends Error {
 
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`;
+  const token = getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers || {}),
+  };
   const response = await fetch(url, {
-    credentials: 'include', // send/receive httpOnly cookie
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
+    credentials: 'include', // still send cookie as fallback
+    headers,
     ...options,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
