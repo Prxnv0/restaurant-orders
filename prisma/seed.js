@@ -12,6 +12,9 @@
 const { PrismaClient } = require('@prisma/client');
 const { hashSync } = require('bcryptjs');
 const { randomUUID } = require('crypto');
+
+// Load .env from backend root
+require('dotenv').config({ path: require('path').join(__dirname, '..', 'backend', '.env') });
 const prisma = new PrismaClient();
 
 // ── Helpers ─────────────────────────────────────────────────────────────
