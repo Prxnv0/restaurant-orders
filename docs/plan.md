@@ -269,7 +269,7 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
 
 **Goal:** 13 test files, ~30-50 test cases total, run in <30 seconds. Run locally before deploying.
 
-### Milestone 11 — Deployment + Smoke Test (est. 0.5 hour) 🔄 IN-PROGRESS
+### Milestone 11 — Deployment + Smoke Test (est. 0.5 hour) ✅ COMPLETE
 **Prerequisite:** Milestone 10 must be ✅ (all 13 test suites pass locally against the test DB). ✅ satisfied — M10 is complete.
 
 **Requirements satisfied:**
@@ -376,6 +376,27 @@ The work is divided into 13 milestones, each scoped to a coherent set of require
   the plan, so the user only has to drop in the live URLs and credentials.
 - M11 will be marked ✅ once `SUBMISSION.md` is filled with the live URLs and
   the smoke test in DEPLOY.md Step 5 has been walked through.
+
+**Live deployment (as of 2026-09-05):**
+- **Backend:** `https://restaurant-orders-2qsn.onrender.com` (Render free Web Service, branch `master`)
+- **Frontend:** `https://restaurant-orders5.vercel.app` (Vercel, Vite project, root `frontend/`)
+- **Database:** Supabase PostgreSQL (ap-southeast-2 region), free tier, seeded via the inline seed runner (`run-seed.js`) — the repo-root `prisma/seed.js` is the source of truth and will work the same once `node_modules` is colocated.
+- **Health check:** `GET /api/health` → `{ status: "ok", time: <iso> }`
+- **Smoke test (all 10 goals) passed against the live URLs.**
+
+**Issues hit during M11 and resolved:**
+
+1. **`prisma/schema.prisma` path was gitignored.** `backend/.gitignore` excludes `backend/prisma/*` because the actual schema lives at repo root `prisma/schema.prisma`. The `package.json` `prisma.schema` config pointed to the missing local copy. Fixed by setting the schema path to `../prisma/schema.prisma` in `backend/package.json` (commit `e66aed5`).
+
+2. **`vercel.json` had an empty `env` block** for `VITE_API_BASE_URL`, which Vercel rejected with "Invalid request: `env.VITE_API_BASE_URL` should be string." Vercel reads the `env` block at build time; an empty value failed schema validation. Removed the block entirely and documented the var in `frontend/.env.example` so the user sets it in the Vercel dashboard. (Commit `d204cfa`.)
+
+3. **Frontend `api.js` hardcoded `API_BASE = ''`** (Vite proxy in dev, same-origin in prod). The original implementation assumed the Vite dev server would proxy `/api/*` to `localhost:4000` in dev, and that the production deploy would be served from the same origin as the API. With the Vercel-frontend + Render-backend split, production is cross-origin, so an explicit `VITE_API_BASE_URL` is required. Fixed by reading `import.meta.env.VITE_API_BASE_URL` (commit `a61b97c`).
+
+4. **Cross-origin `SameSite=Lax` cookie dropped silently.** The original auth implementation used `SameSite=Lax`, which works for same-origin but causes the browser to refuse to send the cookie on cross-origin `fetch()` calls with `credentials: 'include'`. Login itself returned 200, but every subsequent `/api/dashboard` request returned 401 "Authentication required". Switched to `SameSite=None; Secure` in production, `Lax` in dev (commit `2c4f28b`, Decision 31).
+
+5. **Render was tracking the `main` branch instead of `master`.** The `restaurant-orders-2qsn` service was created against the default branch and was pulling empty/old code. Changed the service's branch setting to `master` in the Render dashboard so each new commit triggers a deploy.
+
+6. **CORS `FRONTEND_ORIGIN` was the placeholder `https://your-frontend.vercel.app`.** The default in `backend/.env.example` shipped that placeholder; the actual `https://restaurant-orders5.vercel.app` was set manually in the Render dashboard after the Vercel deploy URL was known.
 
 ### Milestone 12 — Pre-Submission Verification (est. 0.25 hour) ⏳ PENDING
 **Requirements satisfied:** README "How to submit" + "Use git properly" + "What you must commit"
@@ -565,7 +586,7 @@ These rules exist so that a reviewer — or a future session — can recover the
 | 8. Frontend: Manager | 1.5h | ~1h | ✅ |
 | 9. Frontend: Waiter | 1.5h | ~1h | ✅ |
 | 10. Critical Tests | 1h | ~2.5h | ✅ |
-| 11. Deploy + Smoke | 0.5h | TBD | 🔄 |
+| 11. Deploy + Smoke | 0.5h | ~2h (incl. cross-origin cookie debugging) | ✅ |
 | 12. Pre-Submission Check | 0.25h | — | ⏳ |
 | 13. Docs Final | 0.25h | — | ⏳ |
 | **Total** | **~15.5h** | **~13.5h so far** | 2 milestones remain |

@@ -34,7 +34,7 @@ async function main() {
   const manager = await prisma.user.create({
     data: {
       email: 'manager@busy-demo.com',
-      passwordHash: hashSync('Demo123!', 10),
+      passwordHash: hashSync('password123', 10),
       name: 'Alex Manager',
       role: 'MANAGER',
     },
@@ -43,7 +43,7 @@ async function main() {
   const waiter1 = await prisma.user.create({
     data: {
       email: 'waiter1@busy-demo.com',
-      passwordHash: hashSync('Demo123!', 10),
+      passwordHash: hashSync('password123', 10),
       name: 'Jordan Waiter',
       role: 'WAITER',
     },
@@ -52,7 +52,7 @@ async function main() {
   const waiter2 = await prisma.user.create({
     data: {
       email: 'waiter2@busy-demo.com',
-      passwordHash: hashSync('Demo123!', 10),
+      passwordHash: hashSync('password123', 10),
       name: 'Casey Collaborator',
       role: 'WAITER',
     },

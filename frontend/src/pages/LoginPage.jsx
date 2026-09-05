@@ -61,8 +61,8 @@ export default function LoginPage() {
 
         <div className="muted" style={{ marginTop: '16px', fontSize: '12px' }}>
           <p>Demo credentials:</p>
-          <p>Manager: <code>manager@busy-demo.com</code> / <code>Demo123!</code></p>
-          <p>Waiter: <code>waiter1@busy-demo.com</code> / <code>Demo123!</code></p>
+          <p>Manager: <code>manager@busy-demo.com</code> / <code>password123</code></p>
+          <p>Waiter: <code>waiter1@busy-demo.com</code> / <code>password123</code></p>
         </div>
       </div>
     </div>
